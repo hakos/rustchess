@@ -19,6 +19,7 @@ struct Board {
 }
 
 const INITIAL_BOARD: Board = Board {
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     white: Pieces {
         pawns:   0b00000000_11111111_00000000_00000000_00000000_00000000_00000000_00000000,
         rooks:   0b10000001_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
@@ -27,6 +28,7 @@ const INITIAL_BOARD: Board = Board {
         queens:  0b00001000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
         king:    0b00010000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
     },
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     black: Pieces {
         pawns:   0b00000000_00000000_00000000_00000000_00000000_00000000_11111111_00000000,
         rooks:   0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_10000001,
@@ -34,16 +36,16 @@ const INITIAL_BOARD: Board = Board {
         bishops: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00100100,
         queens:  0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00001000,
         king:    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00010000,
-    }
+    },
 };
 
 fn add_pieces(chars: &mut [char; 64], pieces: BitBoard, symbol: char) {
-    (0..64).filter(|pos| occupied(pieces, *pos)).for_each(|pos| {
-        chars[pos] = symbol
-    })
+    (0..64)
+        .filter(|pos| occupied(pieces, *pos))
+        .for_each(|pos| chars[pos] = symbol)
 }
 
-fn board_chars(board: Board) -> [char; 64] {
+fn board_unicode(board: Board) -> [char; 64] {
     let mut chars = [' '; 64];
 
     add_pieces(&mut chars, board.white.pawns, '♙');
@@ -63,9 +65,52 @@ fn board_chars(board: Board) -> [char; 64] {
     chars
 }
 
+fn unicode_to_fen(c: char) -> char {
+    match c {
+        '♙' => 'P',
+        '♘' => 'N',
+        '♗' => 'B',
+        '♖' => 'R',
+        '♕' => 'Q',
+        '♔' => 'K',
+        '♟' => 'p',
+        '♞' => 'n',
+        '♝' => 'b',
+        '♜' => 'r',
+        '♛' => 'q',
+        '♚' => 'k',
+        ' ' => ' ',
+        _ => panic!("Unknown char '{}'", c),
+    }
+}
+
+fn merge_spaces(chars: impl Iterator<Item = char>) -> String {
+    use itertools::Itertools; // coalesce
+    chars
+        .map(|c| if c == ' ' { '1' } else { c })
+        .coalesce(|c, d| {
+            if c.is_digit(10) && d == '1' {
+                let count = c.to_digit(10).unwrap() + 1;
+                Ok(std::char::from_digit(count, 10).unwrap())
+            } else {
+                Err((c, d))
+            }
+        })
+        .collect()
+}
+
+fn board_fen(board: Board) -> String {
+    board_unicode(board)
+        .chunks(8)
+        .map(|rank| rank.iter().map(|c| unicode_to_fen(*c)))
+        .map(|rank| merge_spaces(rank))
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 fn print_board(board: Board) {
-    for (i, row) in board_chars(board).chunks(8).enumerate() {
-        println!("{} |{}|", 8 - i, row.iter().collect::<String>());
+    for (i, rank) in board_unicode(board).chunks(8).enumerate() {
+        println!("{} |{}|", 8 - i, rank.iter().collect::<String>());
     }
     println!("   abcdefgh");
 }
@@ -75,13 +120,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn initial_board_chars() {
+    fn initial_board_unicode() {
         assert_eq!(
             "♜♞♝♛♚♝♞♜♟♟♟♟♟♟♟♟                                ♙♙♙♙♙♙♙♙♖♘♗♕♔♗♘♖",
-            board_chars(INITIAL_BOARD).iter().collect::<String>());
+            board_unicode(INITIAL_BOARD).iter().collect::<String>()
+        );
+    }
+
+    #[test]
+    fn initial_board_fen() {
+        assert_eq!(
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
+            board_fen(INITIAL_BOARD)
+        );
     }
 }
 
 fn main() {
     print_board(INITIAL_BOARD);
+    println!("FEN: {}", board_fen(INITIAL_BOARD))
 }
