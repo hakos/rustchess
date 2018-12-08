@@ -18,52 +18,72 @@ struct Board {
     black: Pieces,
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
-const INITIAL_BOARD: Board = Board {
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    white: Pieces {
-        pawns:   0b00000000_11111111_00000000_00000000_00000000_00000000_00000000_00000000,
-        rooks:   0b10000001_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        knights: 0b01000010_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        bishops: 0b00100100_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        queens:  0b00001000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        king:    0b00010000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-    },
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    black: Pieces {
-        pawns:   0b00000000_00000000_00000000_00000000_00000000_00000000_11111111_00000000,
-        rooks:   0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_10000001,
-        knights: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_01000010,
-        bishops: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00100100,
-        queens:  0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00001000,
-        king:    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00010000,
-    },
-};
+impl Board {
+    fn initial_position() -> Board {
+        #[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
+        Board {
+            #[cfg_attr(rustfmt, rustfmt_skip)]
+            white: Pieces {
+                pawns:   0b00000000_11111111_00000000_00000000_00000000_00000000_00000000_00000000,
+                rooks:   0b10000001_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+                knights: 0b01000010_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+                bishops: 0b00100100_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+                queens:  0b00001000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+                king:    0b00010000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+            },
+            #[cfg_attr(rustfmt, rustfmt_skip)]
+            black: Pieces {
+                pawns:   0b00000000_00000000_00000000_00000000_00000000_00000000_11111111_00000000,
+                rooks:   0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_10000001,
+                knights: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_01000010,
+                bishops: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00100100,
+                queens:  0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00001000,
+                king:    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00010000,
+            },
+        }
+    }
+
+    fn fen(&self) -> String {
+        self.unicode()
+            .chunks(8)
+            .map(|rank| rank.iter().map(|c| unicode_to_fen(*c)))
+            .map(merge_spaces)
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    fn unicode(&self) -> [char; 64] {
+        let mut chars = [' '; 64];
+
+        add_pieces(&mut chars, self.white.pawns, '♙');
+        add_pieces(&mut chars, self.white.knights, '♘');
+        add_pieces(&mut chars, self.white.bishops, '♗');
+        add_pieces(&mut chars, self.white.rooks, '♖');
+        add_pieces(&mut chars, self.white.queens, '♕');
+        add_pieces(&mut chars, self.white.king, '♔');
+
+        add_pieces(&mut chars, self.black.pawns, '♟');
+        add_pieces(&mut chars, self.black.knights, '♞');
+        add_pieces(&mut chars, self.black.bishops, '♝');
+        add_pieces(&mut chars, self.black.rooks, '♜');
+        add_pieces(&mut chars, self.black.queens, '♛');
+        add_pieces(&mut chars, self.black.king, '♚');
+
+        chars
+    }
+
+    fn print(&self) {
+        for (i, rank) in self.unicode().chunks(8).enumerate() {
+            println!("{} |{}|", 8 - i, rank.iter().collect::<String>());
+        }
+        println!("   abcdefgh");
+    }
+}
 
 fn add_pieces(chars: &mut [char; 64], pieces: BitBoard, symbol: char) {
     (0..64)
         .filter(|pos| occupied(pieces, *pos))
         .for_each(|pos| chars[pos] = symbol)
-}
-
-fn board_unicode(board: &Board) -> [char; 64] {
-    let mut chars = [' '; 64];
-
-    add_pieces(&mut chars, board.white.pawns, '♙');
-    add_pieces(&mut chars, board.white.knights, '♘');
-    add_pieces(&mut chars, board.white.bishops, '♗');
-    add_pieces(&mut chars, board.white.rooks, '♖');
-    add_pieces(&mut chars, board.white.queens, '♕');
-    add_pieces(&mut chars, board.white.king, '♔');
-
-    add_pieces(&mut chars, board.black.pawns, '♟');
-    add_pieces(&mut chars, board.black.knights, '♞');
-    add_pieces(&mut chars, board.black.bishops, '♝');
-    add_pieces(&mut chars, board.black.rooks, '♜');
-    add_pieces(&mut chars, board.black.queens, '♛');
-    add_pieces(&mut chars, board.black.king, '♚');
-
-    chars
 }
 
 fn unicode_to_fen(c: char) -> char {
@@ -100,22 +120,6 @@ fn merge_spaces(chars: impl Iterator<Item = char>) -> String {
         .collect()
 }
 
-fn board_fen(board: &Board) -> String {
-    board_unicode(board)
-        .chunks(8)
-        .map(|rank| rank.iter().map(|c| unicode_to_fen(*c)))
-        .map(merge_spaces)
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-fn print_board(board: &Board) {
-    for (i, rank) in board_unicode(board).chunks(8).enumerate() {
-        println!("{} |{}|", 8 - i, rank.iter().collect::<String>());
-    }
-    println!("   abcdefgh");
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,7 +128,7 @@ mod tests {
     fn initial_board_unicode() {
         assert_eq!(
             "♜♞♝♛♚♝♞♜♟♟♟♟♟♟♟♟                                ♙♙♙♙♙♙♙♙♖♘♗♕♔♗♘♖",
-            board_unicode(&INITIAL_BOARD).iter().collect::<String>()
+            Board::initial_position().unicode().iter().collect::<String>()
         );
     }
 
@@ -132,12 +136,14 @@ mod tests {
     fn initial_board_fen() {
         assert_eq!(
             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
-            board_fen(&INITIAL_BOARD)
+            Board::initial_position().fen()
         );
     }
 }
 
 fn main() {
-    print_board(&INITIAL_BOARD);
-    println!("FEN: {}", board_fen(&INITIAL_BOARD));
+    let board = Board::initial_position();
+    board.print();
+    println!("FEN: {}", board.fen());
+    println!("Board size: {} bytes", std::mem::size_of::<Board>());
 }
