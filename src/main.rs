@@ -18,6 +18,7 @@ struct Board {
     black: Pieces,
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
 const INITIAL_BOARD: Board = Board {
     #[cfg_attr(rustfmt, rustfmt_skip)]
     white: Pieces {
@@ -45,7 +46,7 @@ fn add_pieces(chars: &mut [char; 64], pieces: BitBoard, symbol: char) {
         .for_each(|pos| chars[pos] = symbol)
 }
 
-fn board_unicode(board: Board) -> [char; 64] {
+fn board_unicode(board: &Board) -> [char; 64] {
     let mut chars = [' '; 64];
 
     add_pieces(&mut chars, board.white.pawns, '♙');
@@ -99,16 +100,16 @@ fn merge_spaces(chars: impl Iterator<Item = char>) -> String {
         .collect()
 }
 
-fn board_fen(board: Board) -> String {
+fn board_fen(board: &Board) -> String {
     board_unicode(board)
         .chunks(8)
         .map(|rank| rank.iter().map(|c| unicode_to_fen(*c)))
-        .map(|rank| merge_spaces(rank))
+        .map(merge_spaces)
         .collect::<Vec<_>>()
         .join("/")
 }
 
-fn print_board(board: Board) {
+fn print_board(board: &Board) {
     for (i, rank) in board_unicode(board).chunks(8).enumerate() {
         println!("{} |{}|", 8 - i, rank.iter().collect::<String>());
     }
@@ -123,7 +124,7 @@ mod tests {
     fn initial_board_unicode() {
         assert_eq!(
             "♜♞♝♛♚♝♞♜♟♟♟♟♟♟♟♟                                ♙♙♙♙♙♙♙♙♖♘♗♕♔♗♘♖",
-            board_unicode(INITIAL_BOARD).iter().collect::<String>()
+            board_unicode(&INITIAL_BOARD).iter().collect::<String>()
         );
     }
 
@@ -131,12 +132,12 @@ mod tests {
     fn initial_board_fen() {
         assert_eq!(
             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
-            board_fen(INITIAL_BOARD)
+            board_fen(&INITIAL_BOARD)
         );
     }
 }
 
 fn main() {
-    print_board(INITIAL_BOARD);
-    println!("FEN: {}", board_fen(INITIAL_BOARD))
+    print_board(&INITIAL_BOARD);
+    println!("FEN: {}", board_fen(&INITIAL_BOARD));
 }
