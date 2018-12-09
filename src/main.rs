@@ -156,21 +156,21 @@ impl Pieces {
     fn get_white_pawn_moves(&self, src: u8, enemies: &Pieces) -> BitBoard {
         const RANK_4: u64 = 0x00_00_00_ff_00_00_00_00;
         let empty = self.empty() & enemies.empty();
-        let single_pushs = north_one(bitmask(src)) & empty;
-        let double_pushs = north_one(single_pushs) & empty & RANK_4;
+        let single_push = north_one(bitmask(src)) & empty;
+        let double_push = north_one(single_push) & empty & RANK_4;
         let captures = self.get_moves(src, &WHITE_PAWN_CAPTURES, enemies, Movement::Stepping)
             & enemies.occupancy();
-        single_pushs | double_pushs | captures
+        single_push | double_push | captures
     }
 
     fn get_black_pawn_moves(&self, src: u8, enemies: &Pieces) -> BitBoard {
         const RANK_5: u64 = 0x00_00_00_00_ff_00_00_00;
         let empty = self.empty() & enemies.empty();
-        let single_pushs = south_one(bitmask(src)) & empty;
-        let double_pushs = south_one(single_pushs) & empty & RANK_5;
+        let single_push = south_one(bitmask(src)) & empty;
+        let double_push = south_one(single_push) & empty & RANK_5;
         let captures = self.get_moves(src, &BLACK_PAWN_CAPTURES, enemies, Movement::Stepping)
             & enemies.occupancy();
-        single_pushs | double_pushs | captures
+        single_push | double_push | captures
     }
 }
 
