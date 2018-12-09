@@ -299,7 +299,7 @@ impl Board {
         let mut board = Board::cleared();
         let mut index = 0;
         for c in fen.chars() {
-            let piece = match c {
+            match c {
                 'r' => Some(&mut board.black.rooks),
                 'n' => Some(&mut board.black.knights),
                 'b' => Some(&mut board.black.bishops),
@@ -322,11 +322,10 @@ impl Board {
                         .expect(&format!("Unknown char '{}' in FEN string", c));
                     None
                 }
-            };
-            if piece.is_some() {
-                piece.unwrap().set_bit(index as u8);
+            }.map(|piece| {
+                piece.set_bit(index as u8);
                 index += 1;
-            };
+            });
         }
         assert_eq!(64, index);
         board
