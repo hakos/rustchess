@@ -104,27 +104,27 @@ impl Pieces {
                 self.get_black_pawn_moves(src, enemies)
             };
             print_moves(moves);
-            return try_perform_move(&mut self.pawns, moves, src, dst, enemies);
+            return apply_move(&mut self.pawns, moves, src, dst, enemies);
         }
         if self.bishops.test_bit(src) {
             let moves = self.get_moves(src, &BISHOP_MOVES, enemies, Movement::Sliding);
-            return try_perform_move(&mut self.bishops, moves, src, dst, enemies);
+            return apply_move(&mut self.bishops, moves, src, dst, enemies);
         }
         if self.rooks.test_bit(src) {
             let moves = self.get_moves(src, &ROOK_MOVES, enemies, Movement::Sliding);
-            return try_perform_move(&mut self.rooks, moves, src, dst, enemies);
+            return apply_move(&mut self.rooks, moves, src, dst, enemies);
         }
         if self.knights.test_bit(src) {
             let moves = self.get_moves(src, &KNIGHT_MOVES, enemies, Movement::Stepping);
-            return try_perform_move(&mut self.knights, moves, src, dst, enemies);
+            return apply_move(&mut self.knights, moves, src, dst, enemies);
         }
         if self.queens.test_bit(src) {
             let moves = self.get_moves(src, &KING_QUEEN_MOVES, enemies, Movement::Sliding);
-            return try_perform_move(&mut self.queens, moves, src, dst, enemies);
+            return apply_move(&mut self.queens, moves, src, dst, enemies);
         }
         if self.king.test_bit(src) {
             let moves = self.get_moves(src, &KING_QUEEN_MOVES, enemies, Movement::Stepping);
-            return try_perform_move(&mut self.king, moves, src, dst, enemies);
+            return apply_move(&mut self.king, moves, src, dst, enemies);
         }
 
         false
@@ -162,7 +162,9 @@ impl Pieces {
         let empty = self.empty() & enemies.empty();
         let single_pushs = north_one(bitmask(src)) & empty;
         let double_pushs = north_one(single_pushs) & empty & RANK_4;
-        single_pushs | double_pushs
+        let captures = self.get_moves(src, &WHITE_PAWN_CAPTURES, enemies, Movement::Stepping)
+            & enemies.occupancy();
+        single_pushs | double_pushs | captures
     }
 
     fn get_black_pawn_moves(&self, src: u8, enemies: &Pieces) -> BitBoard {
@@ -170,7 +172,9 @@ impl Pieces {
         let empty = self.empty() & enemies.empty();
         let single_pushs = south_one(bitmask(src)) & empty;
         let double_pushs = south_one(single_pushs) & empty & RANK_5;
-        single_pushs | double_pushs
+        let captures = self.get_moves(src, &BLACK_PAWN_CAPTURES, enemies, Movement::Stepping)
+            & enemies.occupancy();
+        single_pushs | double_pushs | captures
     }
 }
 
@@ -243,6 +247,8 @@ const KING_QUEEN_MOVES: [Point; 8] = [
     point(1, 0),
     point(1, 1),
 ];
+const WHITE_PAWN_CAPTURES: [Point; 2] = [point(-1, -1), point(1, -1)];
+const BLACK_PAWN_CAPTURES: [Point; 2] = [point(-1, 1), point(1, 1)];
 
 fn print_unicode_board(unicode: &[char]) {
     for (i, rank) in unicode.chunks(8).enumerate() {
@@ -251,14 +257,14 @@ fn print_unicode_board(unicode: &[char]) {
     println!("   abcdefgh");
 }
 
-fn try_perform_move(
+fn apply_move(
     pieces: &mut BitBoard,
-    moves: BitBoard,
+    allowed_moves: BitBoard,
     src: u8,
     dst: u8,
     enemies: &mut Pieces,
 ) -> bool {
-    if moves.test_bit(dst) {
+    if allowed_moves.test_bit(dst) {
         pieces.clear_bit(src);
         pieces.set_bit(dst);
         enemies.capture(dst);
@@ -515,9 +521,12 @@ mod tests {
     }
 
     #[test]
-    fn move_correct_pawn() {
+    fn pawn_movement() {
         let mut board = Board::initial_position();
-        assert!(!board.make_move("a2b4")); // too far
+        assert!(!board.make_move("a2b4"));
+        assert!(board.make_move("d2d4"));
+        assert!(board.make_move("d7d5"));
+        assert!(!board.make_move("d4e5")); // no capture
     }
 
     #[test]
@@ -593,6 +602,23 @@ mod tests {
         assert!(board.make_move("e2g4")); // capture
         assert_eq!(16, board.white.piece_count());
         assert_eq!(15, board.black.piece_count());
+    }
+
+    #[test]
+    fn white_pawn_capture() {
+        let mut board = Board::from_fen("rnbqkbnr/pppp1ppp/8/4p3/3P4/8/PPP1PPPP/RNBQKBNR");
+        assert_eq!(8, board.black.pawns.count_ones());
+        assert!(board.make_move("d4e5")); // capture
+        assert_eq!(7, board.black.pawns.count_ones());
+    }
+
+    #[test]
+    fn black_pawn_capture() {
+        let mut board = Board::from_fen("rnbqkbnr/pppp1ppp/8/4p3/3P4/8/PPP1PPPP/RNBQKBNR");
+        board.turn = Color::Black;
+        assert_eq!(8, board.white.pawns.count_ones());
+        assert!(board.make_move("e5d4")); // capture
+        assert_eq!(7, board.white.pawns.count_ones());
     }
 
     #[test]
