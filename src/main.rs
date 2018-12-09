@@ -78,10 +78,6 @@ impl Pieces {
         !self.occupancy()
     }
 
-    fn piece_count(&self) -> u32 {
-        self.occupancy().count_ones()
-    }
-
     fn capture(&mut self, index: u8) {
         self.pawns.clear_bit(index);
         self.rooks.clear_bit(index);
@@ -595,11 +591,9 @@ mod tests {
     fn capture_bishop() {
         let mut board = Board::from_fen("rn1qkbnr/ppp1pppp/8/3p4/4P1b1/8/PPPPBPPP/RNBQK1NR");
         assert!(!board.make_move("e2h5")); // past enemy
-        assert_eq!(16, board.white.piece_count());
-        assert_eq!(16, board.black.piece_count());
+        assert_eq!(2, board.black.bishops.count_ones());
         assert!(board.make_move("e2g4")); // capture
-        assert_eq!(16, board.white.piece_count());
-        assert_eq!(15, board.black.piece_count());
+        assert_eq!(1, board.black.bishops.count_ones());
     }
 
     #[test]
@@ -633,13 +627,19 @@ mod tests {
     }
 }
 
+use std::env;
+
 fn main() {
     use std::io;
     use std::io::prelude::*;
 
     println!("Welcome to Rust Chess!");
 
-    let mut board = Board::initial_position();
+    let mut board = if let Some(fen) = env::args().nth(1) {
+        Board::from_fen(&fen)
+    } else {
+        Board::initial_position()
+    };
 
     let print_state = |board: &Board| {
         println!("FEN: {}", board.as_fen());
