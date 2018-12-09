@@ -79,12 +79,7 @@ impl Pieces {
     }
 
     fn piece_count(&self) -> u32 {
-        self.pawns.count_ones()
-            + self.rooks.count_ones()
-            + self.knights.count_ones()
-            + self.bishops.count_ones()
-            + self.queens.count_ones()
-            + self.king.count_ones()
+        self.occupancy().count_ones()
     }
 
     fn capture(&mut self, index: u8) {
@@ -373,6 +368,8 @@ impl Board {
     }
 
     fn make_move(&mut self, m: &str) -> bool {
+        self.check_invariants();
+
         if m.len() != 4 {
             return false;
         }
@@ -396,6 +393,11 @@ impl Board {
         }
 
         false
+    }
+
+    fn check_invariants(&self) {
+        // No overlapping pieces
+        assert_eq!(0, self.white.occupancy() & self.black.occupancy());
     }
 }
 
