@@ -128,7 +128,7 @@ impl Pieces {
     fn get_moves(
         &self,
         index: u8,
-        offsets: &[Point],
+        directions: &[Point],
         enemies: &Pieces,
         movement: Movement,
     ) -> BitBoard {
@@ -136,16 +136,17 @@ impl Pieces {
         let friendly_pieces = self.occupancy();
         let enemy_pieces = enemies.occupancy();
         let mut moves: BitBoard = 0;
-        for offset in offsets {
-            let mut dst = &src + offset;
+        for direction in directions {
+            let mut dst = &src + direction;
             while dst.inside_board() && !friendly_pieces.test_bit(dst.to_index()) {
                 let dst_index = dst.to_index();
                 moves.set_bit(dst_index);
                 let capture = enemy_pieces.test_bit(dst_index);
                 if movement == Movement::Stepping || capture {
+                    // Stop tracing this direction
                     break;
                 }
-                dst = &dst + offset;
+                dst = &dst + direction;
             }
         }
         print_moves(moves);
