@@ -59,6 +59,17 @@ impl BitSet for BitBoard {
 }
 
 impl Pieces {
+    fn cleared() -> Pieces {
+        Pieces {
+            pawns: 0,
+            rooks: 0,
+            knights: 0,
+            bishops: 0,
+            queens: 0,
+            king: 0,
+        }
+    }
+
     fn occupancy(&self) -> BitBoard {
         self.pawns | self.rooks | self.knights | self.bishops | self.queens | self.king
     }
@@ -283,6 +294,49 @@ impl Board {
         }
     }
 
+    fn cleared() -> Board {
+        Board {
+            white: Pieces::cleared(),
+            black: Pieces::cleared(),
+            turn: Color::White,
+        }
+    }
+
+    fn from_fen(fen: &str) -> Board {
+        let mut board = Board::cleared();
+        let mut index = 0;
+        for c in fen.chars() {
+            let piece = match c {
+                'r' => Some(&mut board.black.rooks),
+                'n' => Some(&mut board.black.knights),
+                'b' => Some(&mut board.black.bishops),
+                'q' => Some(&mut board.black.queens),
+                'k' => Some(&mut board.black.king),
+                'p' => Some(&mut board.black.pawns),
+                'R' => Some(&mut board.white.rooks),
+                'N' => Some(&mut board.white.knights),
+                'B' => Some(&mut board.white.bishops),
+                'Q' => Some(&mut board.white.queens),
+                'K' => Some(&mut board.white.king),
+                'P' => Some(&mut board.white.pawns),
+                '/' => {
+                    assert!(index % 8 == 0);
+                    None
+                }
+                _ => {
+                    index += c.to_digit(10).expect("Expected digit");
+                    None
+                }
+            };
+            if piece.is_some() {
+                piece.unwrap().set_bit(index as u8);
+                index += 1;
+            };
+        }
+        assert_eq!(64, index);
+        board
+    }
+
     fn as_fen(&self) -> String {
         self.as_unicode()
             .chunks(8)
@@ -431,6 +485,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_fen() {
+        assert_eq!(
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR").as_fen(),
+        );
+    }
+
+    #[test]
     fn make_illegal_moves() {
         let mut board = Board::initial_position();
         assert!(!board.make_move("0000"));
@@ -524,11 +586,7 @@ mod tests {
 
     #[test]
     fn capture_bishop() {
-        let mut board = Board::initial_position();
-        assert!(board.make_move("e2e4"));
-        assert!(board.make_move("d7d5"));
-        assert!(board.make_move("f1e2"));
-        assert!(board.make_move("c8g4"));
+        let mut board = Board::from_fen("rn1qkbnr/ppp1pppp/8/3p4/4P1b1/8/PPPPBPPP/RNBQK1NR");
         assert!(!board.make_move("e2h5")); // past enemy
         assert_eq!(16, board.white.piece_count());
         assert_eq!(16, board.black.piece_count());
