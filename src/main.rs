@@ -629,9 +629,8 @@ mod tests {
     }
 }
 
-use std::env;
-
 fn main() {
+    use std::env;
     use std::io;
     use std::io::prelude::*;
 
@@ -656,7 +655,8 @@ fn main() {
         if board.make_move(&user_move) {
             print_state(&board);
         } else {
-            println!("Illegal move, try again")
+            println!("Illegal move, try again");
         }
     }
+    println!("Bye");
 }
