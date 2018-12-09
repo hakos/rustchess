@@ -104,30 +104,25 @@ impl Pieces {
                 self.get_black_pawn_moves(src, enemies)
             };
             print_moves(moves);
-            return apply_move(&mut self.pawns, moves, src, dst, enemies);
-        }
-        if self.bishops.test_bit(src) {
+            apply_move(&mut self.pawns, moves, src, dst, enemies)
+        } else if self.bishops.test_bit(src) {
             let moves = self.get_moves(src, &BISHOP_MOVES, enemies, Movement::Sliding);
-            return apply_move(&mut self.bishops, moves, src, dst, enemies);
-        }
-        if self.rooks.test_bit(src) {
+            apply_move(&mut self.bishops, moves, src, dst, enemies)
+        } else if self.rooks.test_bit(src) {
             let moves = self.get_moves(src, &ROOK_MOVES, enemies, Movement::Sliding);
-            return apply_move(&mut self.rooks, moves, src, dst, enemies);
-        }
-        if self.knights.test_bit(src) {
+            apply_move(&mut self.rooks, moves, src, dst, enemies)
+        } else if self.knights.test_bit(src) {
             let moves = self.get_moves(src, &KNIGHT_MOVES, enemies, Movement::Stepping);
-            return apply_move(&mut self.knights, moves, src, dst, enemies);
-        }
-        if self.queens.test_bit(src) {
+            apply_move(&mut self.knights, moves, src, dst, enemies)
+        } else if self.queens.test_bit(src) {
             let moves = self.get_moves(src, &KING_QUEEN_MOVES, enemies, Movement::Sliding);
-            return apply_move(&mut self.queens, moves, src, dst, enemies);
-        }
-        if self.king.test_bit(src) {
+            apply_move(&mut self.queens, moves, src, dst, enemies)
+        } else if self.king.test_bit(src) {
             let moves = self.get_moves(src, &KING_QUEEN_MOVES, enemies, Movement::Stepping);
-            return apply_move(&mut self.king, moves, src, dst, enemies);
+            apply_move(&mut self.king, moves, src, dst, enemies)
+        } else {
+            false
         }
-
-        false
     }
 
     fn get_moves(
