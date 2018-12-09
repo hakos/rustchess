@@ -317,7 +317,9 @@ impl Board {
                     None
                 }
                 _ => {
-                    index += c.to_digit(10).expect("Expected digit");
+                    index += c
+                        .to_digit(9)
+                        .expect(&format!("Unknown char '{}' in FEN string", c));
                     None
                 }
             };
