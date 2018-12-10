@@ -428,8 +428,6 @@ impl Board {
     }
 
     fn make_move(&mut self, m: &str) -> bool {
-        self.check_invariants();
-
         if m.len() != 4 {
             return false;
         }
@@ -479,11 +477,6 @@ impl Board {
         } else {
             self.black.is_checked_by(&self.white, Color::White)
         }
-    }
-
-    fn check_invariants(&self) {
-        // No overlapping pieces
-        assert_eq!(0, self.white.occupancy() & self.black.occupancy());
     }
 }
 
