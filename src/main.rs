@@ -223,17 +223,15 @@ impl Pieces {
         color: Color,
     ) {
         for (src, dsts) in moves.iter_mut().enumerate() {
-            let mut remaining_dsts = *dsts;
-            while remaining_dsts != 0 {
-                let dst = remaining_dsts.first_bit();
-                remaining_dsts.clear_bit(dst);
+            let dsts_copy = *dsts;
+            dsts_copy.for_each_bit(|dst| {
                 let mut enemies_copy = *enemies;
                 let mut self_copy = *self;
                 self_copy.apply_move_impl(&mut enemies_copy, src as u8, dst);
                 if self_copy.is_checked_by(&enemies_copy, color.other()) {
                     dsts.clear_bit(dst);
                 }
-            }
+            });
         }
     }
 
