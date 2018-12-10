@@ -26,7 +26,7 @@ impl Color {
     }
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq)]
 enum Movement {
     Sliding,
     Stepping,
