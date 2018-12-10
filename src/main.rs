@@ -32,7 +32,8 @@ enum Movement {
     Stepping,
 }
 
-fn print_moves(moves: BitBoard) {
+#[allow(dead_code)]
+fn print_bits(moves: BitBoard) {
     let mut chars = ['.'; 64];
     add_piece_symbols(&mut chars, moves, '1');
     print_unicode_board(&chars);
@@ -184,23 +185,26 @@ impl Pieces {
         let rook_attack_sources = self.get_moves(index, &ROOK_MOVES, enemies, Movement::Sliding);
         let enemy_rooks_and_queens = enemies.rooks | enemies.queens;
         if rook_attack_sources & enemy_rooks_and_queens != 0 {
-            return true
+            return true;
         }
 
-        let bishop_attack_sources = self.get_moves(index, &BISHOP_MOVES, enemies, Movement::Sliding);
+        let bishop_attack_sources =
+            self.get_moves(index, &BISHOP_MOVES, enemies, Movement::Sliding);
         let enemy_bishops_and_queens = enemies.bishops | enemies.queens;
         if bishop_attack_sources & enemy_bishops_and_queens != 0 {
-            return true
+            return true;
         }
 
-        let knight_attack_sources = self.get_moves(index, &KNIGHT_MOVES, enemies, Movement::Stepping);
+        let knight_attack_sources =
+            self.get_moves(index, &KNIGHT_MOVES, enemies, Movement::Stepping);
         if knight_attack_sources & enemies.knights != 0 {
-            return true
+            return true;
         }
 
-        let king_attack_sources = self.get_moves(index, &KING_QUEEN_MOVES, enemies, Movement::Stepping);
+        let king_attack_sources =
+            self.get_moves(index, &KING_QUEEN_MOVES, enemies, Movement::Stepping);
         if king_attack_sources & enemies.king != 0 {
-            return true
+            return true;
         }
 
         let pawn_captures = if attacker == Color::White {
@@ -210,7 +214,7 @@ impl Pieces {
         };
         let pawn_attack_sources = self.get_moves(index, pawn_captures, enemies, Movement::Stepping);
         if pawn_attack_sources & enemies.pawns != 0 {
-            return true
+            return true;
         }
 
         false
@@ -358,7 +362,7 @@ impl Board {
         let mut board = Board::cleared();
         let mut index = 0;
         for c in fen.chars() {
-            match c {
+            if let Some(piece) = match c {
                 'r' => Some(&mut board.black.rooks),
                 'n' => Some(&mut board.black.knights),
                 'b' => Some(&mut board.black.bishops),
@@ -378,13 +382,13 @@ impl Board {
                 _ => {
                     index += c
                         .to_digit(9)
-                        .expect(&format!("Unknown char '{}' in FEN string", c));
+                        .unwrap_or_else(|| panic!("Unknown char '{}' in FEN string", c));
                     None
                 }
-            }.map(|piece| {
+            } {
                 piece.set_bit(index as u8);
                 index += 1;
-            });
+            };
         }
         assert_eq!(64, index);
         board
@@ -458,6 +462,7 @@ impl Board {
         true
     }
 
+    #[cfg(test)]
     fn square_is_attacked_by(&self, index: u8, attacker: Color) -> bool {
         if attacker == Color::White {
             self.black.square_is_attacked_by(index, &self.white, attacker)
