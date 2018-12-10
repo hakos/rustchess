@@ -442,6 +442,7 @@ impl Board {
             None => return false,
         };
 
+        // Copy to be able to restore if move ends up in check
         let self_before_move = *self;
 
         if self.turn == Color::White {
@@ -453,6 +454,7 @@ impl Board {
         }
 
         if self.is_checked(self.turn) {
+            // Restore board
             *self = self_before_move;
             return false;
         }
