@@ -57,6 +57,9 @@ trait BitSet {
     fn test_bit(&self, bit: u8) -> bool;
     fn count(&self) -> u8;
     fn first_bit(&self) -> u8;
+    fn for_each_bit<F>(&self, f: F)
+    where
+        F: FnMut(u8);
 }
 
 impl BitSet for BitBoard {
@@ -74,6 +77,17 @@ impl BitSet for BitBoard {
     }
     fn first_bit(&self) -> u8 {
         self.trailing_zeros() as u8
+    }
+    fn for_each_bit<F>(&self, mut f: F)
+    where
+        F: FnMut(u8),
+    {
+        let mut copy = *self;
+        while copy != 0 {
+            let next_bit = copy.first_bit();
+            f(next_bit);
+            copy.clear_bit(next_bit);
+        }
     }
 }
 
@@ -107,34 +121,58 @@ impl Pieces {
     }
 
     fn make_move(&mut self, enemies: &mut Pieces, src: u8, dst: u8, color: Color) -> bool {
+        let allowed_moves = self.get_moves_from_square(src, enemies, color);
+        if !allowed_moves.test_bit(dst) {
+            return false;
+        }
+
         if self.pawns.test_bit(src) {
-            let moves = if color == Color::White {
+            apply_move(&mut self.pawns, src, dst, enemies);
+        } else if self.bishops.test_bit(src) {
+            apply_move(&mut self.bishops, src, dst, enemies);
+        } else if self.rooks.test_bit(src) {
+            apply_move(&mut self.rooks, src, dst, enemies);
+        } else if self.knights.test_bit(src) {
+            apply_move(&mut self.knights, src, dst, enemies);
+        } else if self.queens.test_bit(src) {
+            apply_move(&mut self.queens, src, dst, enemies);
+        } else if self.king.test_bit(src) {
+            apply_move(&mut self.king, src, dst, enemies);
+        } else {
+            panic!("Unknown piece!");
+        }
+
+        true
+    }
+
+    fn get_moves_from_square(&self, src: u8, enemies: &Pieces, color: Color) -> BitBoard {
+        if self.pawns.test_bit(src) {
+            if color == Color::White {
                 self.get_white_pawn_moves(src, enemies)
             } else {
                 self.get_black_pawn_moves(src, enemies)
-            };
-            apply_move(&mut self.pawns, moves, src, dst, enemies)
+            }
         } else if self.bishops.test_bit(src) {
-            let moves = self.get_moves(src, &BISHOP_MOVES, enemies, Movement::Sliding);
-            apply_move(&mut self.bishops, moves, src, dst, enemies)
+            self.get_moves_from_square_for_piece(src, &BISHOP_MOVES, enemies, Movement::Sliding)
         } else if self.rooks.test_bit(src) {
-            let moves = self.get_moves(src, &ROOK_MOVES, enemies, Movement::Sliding);
-            apply_move(&mut self.rooks, moves, src, dst, enemies)
+            self.get_moves_from_square_for_piece(src, &ROOK_MOVES, enemies, Movement::Sliding)
         } else if self.knights.test_bit(src) {
-            let moves = self.get_moves(src, &KNIGHT_MOVES, enemies, Movement::Stepping);
-            apply_move(&mut self.knights, moves, src, dst, enemies)
+            self.get_moves_from_square_for_piece(src, &KNIGHT_MOVES, enemies, Movement::Stepping)
         } else if self.queens.test_bit(src) {
-            let moves = self.get_moves(src, &KING_QUEEN_MOVES, enemies, Movement::Sliding);
-            apply_move(&mut self.queens, moves, src, dst, enemies)
+            self.get_moves_from_square_for_piece(src, &KING_QUEEN_MOVES, enemies, Movement::Sliding)
         } else if self.king.test_bit(src) {
-            let moves = self.get_moves(src, &KING_QUEEN_MOVES, enemies, Movement::Stepping);
-            apply_move(&mut self.king, moves, src, dst, enemies)
+            self.get_moves_from_square_for_piece(
+                src,
+                &KING_QUEEN_MOVES,
+                enemies,
+                Movement::Stepping,
+            )
         } else {
-            false
+            0
         }
     }
 
-    fn get_moves(
+    fn get_moves_from_square_for_piece(
         &self,
         index: u8,
         directions: &[Point],
@@ -161,13 +199,96 @@ impl Pieces {
         moves
     }
 
+    fn get_moves(&self, enemies: &Pieces, color: Color) -> [BitBoard; 64] {
+        let mut moves: [BitBoard; 64] = [0; 64];
+
+        self.pawns.for_each_bit(|src| {
+            moves[src as usize] = if color == Color::White {
+                self.get_white_pawn_moves(src, enemies)
+            } else {
+                self.get_black_pawn_moves(src, enemies)
+            };
+        });
+
+        self.bishops.for_each_bit(|src| {
+            moves[src as usize] = self.get_moves_from_square_for_piece(
+                src,
+                &BISHOP_MOVES,
+                enemies,
+                Movement::Sliding,
+            );
+        });
+
+        self.rooks.for_each_bit(|src| {
+            moves[src as usize] =
+                self.get_moves_from_square_for_piece(src, &ROOK_MOVES, enemies, Movement::Sliding);
+        });
+
+        self.knights.for_each_bit(|src| {
+            moves[src as usize] = self.get_moves_from_square_for_piece(
+                src,
+                &KNIGHT_MOVES,
+                enemies,
+                Movement::Stepping,
+            );
+        });
+
+        self.queens.for_each_bit(|src| {
+            moves[src as usize] = self.get_moves_from_square_for_piece(
+                src,
+                &KING_QUEEN_MOVES,
+                enemies,
+                Movement::Sliding,
+            );
+        });
+
+        let king_index = self.king.first_bit();
+        moves[king_index as usize] = self.get_moves_from_square_for_piece(
+            king_index,
+            &KING_QUEEN_MOVES,
+            enemies,
+            Movement::Stepping,
+        );
+
+        self.remove_moves_that_leave_us_checked(&mut moves, enemies, color);
+
+        moves
+    }
+
+    fn remove_moves_that_leave_us_checked(
+        &self,
+        moves: &mut [BitBoard; 64],
+        enemies: &Pieces,
+        color: Color,
+    ) {
+        for (src, dsts) in moves.iter_mut().enumerate() {
+            let mut remaining_dsts = *dsts;
+            while remaining_dsts != 0 {
+                let dst = remaining_dsts.first_bit();
+                remaining_dsts.clear_bit(dst);
+                let mut enemies_copy = *enemies;
+                let mut self_copy = *self;
+                if !self_copy.make_move(&mut enemies_copy, src as u8, dst, color) {
+                    panic!("Generated move must be legal");
+                }
+                if self_copy.is_checked_by(&enemies_copy, color.other()) {
+                    dsts.clear_bit(dst);
+                }
+            }
+        }
+    }
+
     fn get_white_pawn_moves(&self, src: u8, enemies: &Pieces) -> BitBoard {
         const RANK_4: u64 = 0x00_00_00_ff_00_00_00_00;
         let empty = self.empty() & enemies.empty();
         let single_push = shift_north(bitmask(src)) & empty;
         let double_push = shift_north(single_push) & empty & RANK_4;
-        let captures = self.get_moves(src, &WHITE_PAWN_CAPTURES, enemies, Movement::Stepping)
-            & enemies.occupancy();
+        let captures = self.get_moves_from_square_for_piece(
+            src,
+            &WHITE_PAWN_CAPTURES,
+            enemies,
+            Movement::Stepping,
+        ) & enemies.occupancy();
         single_push | double_push | captures
     }
 
@@ -176,33 +297,42 @@ impl Pieces {
         let empty = self.empty() & enemies.empty();
         let single_push = shift_south(bitmask(src)) & empty;
         let double_push = shift_south(single_push) & empty & RANK_5;
-        let captures = self.get_moves(src, &BLACK_PAWN_CAPTURES, enemies, Movement::Stepping)
-            & enemies.occupancy();
+        let captures = self.get_moves_from_square_for_piece(
+            src,
+            &BLACK_PAWN_CAPTURES,
+            enemies,
+            Movement::Stepping,
+        ) & enemies.occupancy();
         single_push | double_push | captures
     }
 
     fn square_is_attacked_by(&self, index: u8, enemies: &Pieces, attacker: Color) -> bool {
-        let rook_attack_sources = self.get_moves(index, &ROOK_MOVES, enemies, Movement::Sliding);
+        let rook_attack_sources =
+            self.get_moves_from_square_for_piece(index, &ROOK_MOVES, enemies, Movement::Sliding);
         let enemy_rooks_and_queens = enemies.rooks | enemies.queens;
         if rook_attack_sources & enemy_rooks_and_queens != 0 {
             return true;
         }
 
         let bishop_attack_sources =
-            self.get_moves(index, &BISHOP_MOVES, enemies, Movement::Sliding);
+            self.get_moves_from_square_for_piece(index, &BISHOP_MOVES, enemies, Movement::Sliding);
         let enemy_bishops_and_queens = enemies.bishops | enemies.queens;
         if bishop_attack_sources & enemy_bishops_and_queens != 0 {
             return true;
         }
 
         let knight_attack_sources =
-            self.get_moves(index, &KNIGHT_MOVES, enemies, Movement::Stepping);
+            self.get_moves_from_square_for_piece(index, &KNIGHT_MOVES, enemies, Movement::Stepping);
         if knight_attack_sources & enemies.knights != 0 {
             return true;
         }
 
-        let king_attack_sources =
-            self.get_moves(index, &KING_QUEEN_MOVES, enemies, Movement::Stepping);
+        let king_attack_sources = self.get_moves_from_square_for_piece(
+            index,
+            &KING_QUEEN_MOVES,
+            enemies,
+            Movement::Stepping,
+        );
         if king_attack_sources & enemies.king != 0 {
             return true;
         }
@@ -212,7 +342,8 @@ impl Pieces {
         } else {
             &WHITE_PAWN_CAPTURES
         };
-        let pawn_attack_sources = self.get_moves(index, pawn_captures, enemies, Movement::Stepping);
+        let pawn_attack_sources =
+            self.get_moves_from_square_for_piece(index, pawn_captures, enemies, Movement::Stepping);
         if pawn_attack_sources & enemies.pawns != 0 {
             return true;
         }
@@ -307,21 +438,10 @@ fn print_unicode_board(unicode: &[char]) {
     println!("   abcdefgh");
 }
 
-fn apply_move(
-    pieces: &mut BitBoard,
-    allowed_moves: BitBoard,
-    src: u8,
-    dst: u8,
-    enemies: &mut Pieces,
-) -> bool {
-    if allowed_moves.test_bit(dst) {
-        pieces.clear_bit(src);
-        pieces.set_bit(dst);
-        enemies.capture(dst);
-        true
-    } else {
-        false
-    }
+fn apply_move(pieces: &mut BitBoard, src: u8, dst: u8, enemies: &mut Pieces) {
+    pieces.clear_bit(src);
+    pieces.set_bit(dst);
+    enemies.capture(dst);
 }
 
 impl Board {
@@ -465,9 +585,11 @@ impl Board {
     #[cfg(test)]
     fn square_is_attacked_by(&self, index: u8, attacker: Color) -> bool {
         if attacker == Color::White {
-            self.black.square_is_attacked_by(index, &self.white, attacker)
+            self.black
+                .square_is_attacked_by(index, &self.white, attacker)
         } else {
-            self.white.square_is_attacked_by(index, &self.black, attacker)
+            self.white
+                .square_is_attacked_by(index, &self.black, attacker)
         }
     }
 
@@ -788,6 +910,23 @@ mod tests {
         assert_eq!(Color::White, board.turn); // unchanged
         assert!(board.make_move("a2b2")); // out of check
         assert_eq!(Color::Black, board.turn);
+    }
+
+    #[test]
+    fn initial_moves() {
+        let board = Board::initial_position();
+        let moves = board.white.get_moves(&board.black, Color::White);
+        assert_eq!(64, moves.len());
+        let num_opening_moves = moves.into_iter().fold(0, |acc, m| acc + m.count());
+        assert_eq!(20, num_opening_moves);
+    }
+
+    #[test]
+    fn scholars_mate() {
+        let board = Board::from_fen("r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR");
+        let moves = board.black.get_moves(&board.white, Color::Black);
+        let num_moves_in_mate = moves.into_iter().fold(0, |acc, m| acc + m.count());
+        assert_eq!(0, num_moves_in_mate);
     }
 
     #[test]
