@@ -22,9 +22,8 @@ enum Movement {
 }
 
 fn print_moves(moves: BitBoard) {
-    let mut chars = [' '; 64];
-    add_piece_symbols(&mut chars, moves, '.');
-    println!("Valid moves:");
+    let mut chars = ['.'; 64];
+    add_piece_symbols(&mut chars, moves, '1');
     print_unicode_board(&chars);
 }
 
@@ -392,6 +391,28 @@ impl Board {
         false
     }
 
+    fn square_is_attacked_by(&self, index: u8, attacker: Color) -> bool {
+        let (attacking, defending) = if attacker == Color::White {
+            (&self.white, &self.black)
+        } else {
+            (&self.black, &self.white)
+        };
+
+        let rook_attack_sources = defending.get_moves(index, &ROOK_MOVES, attacking, Movement::Sliding);
+        let attacking_rooks_and_queens = attacking.rooks | attacking.queens;
+        if rook_attack_sources & attacking_rooks_and_queens != 0 {
+            return true
+        }
+
+        let bishop_attack_sources = defending.get_moves(index, &BISHOP_MOVES, attacking, Movement::Sliding);
+        let attacking_bishops_and_queens = attacking.bishops | attacking.queens;
+        if bishop_attack_sources & attacking_bishops_and_queens != 0 {
+            return true
+        }
+
+        false
+    }
+
     fn check_invariants(&self) {
         // No overlapping pieces
         assert_eq!(0, self.white.occupancy() & self.black.occupancy());
@@ -612,6 +633,38 @@ mod tests {
         assert_eq!(8, board.white.pawns.count_ones());
         assert!(board.make_move("e5d4")); // capture
         assert_eq!(7, board.white.pawns.count_ones());
+    }
+
+    #[test]
+    fn square_is_attacked_by_rook() {
+        let mut board = Board::cleared();
+        board.white.rooks.set_bit(str_to_index("a1").unwrap());
+        assert!(!board.square_is_attacked_by(str_to_index("a1").unwrap(), Color::White));
+        assert!(board.square_is_attacked_by(str_to_index("b1").unwrap(), Color::White));
+        assert!(board.square_is_attacked_by(str_to_index("a2").unwrap(), Color::White));
+        assert!(!board.square_is_attacked_by(str_to_index("b2").unwrap(), Color::White));
+        assert!(board.square_is_attacked_by(str_to_index("h1").unwrap(), Color::White));
+        board.white.pawns.set_bit(str_to_index("d1").unwrap()); // blocking pawn
+        assert!(!board.square_is_attacked_by(str_to_index("h1").unwrap(), Color::White));
+    }
+
+    #[test]
+    fn square_is_attacked_by_bishop() {
+        let mut board = Board::cleared();
+        board.white.bishops.set_bit(str_to_index("a1").unwrap());
+        assert!(!board.square_is_attacked_by(str_to_index("b1").unwrap(), Color::White));
+        assert!(!board.square_is_attacked_by(str_to_index("a2").unwrap(), Color::White));
+        assert!(board.square_is_attacked_by(str_to_index("b2").unwrap(), Color::White));
+    }
+
+    #[test]
+    fn square_is_attacked_by_queen() {
+        let mut board = Board::cleared();
+        board.black.queens.set_bit(str_to_index("a1").unwrap());
+        assert!(board.square_is_attacked_by(str_to_index("b1").unwrap(), Color::Black));
+        assert!(board.square_is_attacked_by(str_to_index("a2").unwrap(), Color::Black));
+        assert!(board.square_is_attacked_by(str_to_index("b2").unwrap(), Color::Black));
+        assert!(!board.square_is_attacked_by(!str_to_index("c2").unwrap(), Color::Black));
     }
 
     #[test]
