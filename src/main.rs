@@ -15,6 +15,16 @@ enum Color {
     Black,
 }
 
+impl Color {
+    fn other(self) -> Color {
+        if self == Color::White {
+            Color::Black
+        } else {
+            Color::White
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum Movement {
     Sliding,
@@ -43,6 +53,8 @@ trait BitSet {
     fn clear_bit(&mut self, bit: u8);
     fn set_bit(&mut self, bit: u8);
     fn test_bit(&self, bit: u8) -> bool;
+    fn count(&self) -> u8;
+    fn first_bit(&self) -> u8;
 }
 
 impl BitSet for BitBoard {
@@ -54,6 +66,12 @@ impl BitSet for BitBoard {
     }
     fn test_bit(&self, bit: u8) -> bool {
         *self & bitmask(bit) != 0
+    }
+    fn count(&self) -> u8 {
+        self.count_ones() as u8
+    }
+    fn first_bit(&self) -> u8 {
+        self.trailing_zeros() as u8
     }
 }
 
@@ -93,7 +111,6 @@ impl Pieces {
             } else {
                 self.get_black_pawn_moves(src, enemies)
             };
-            print_moves(moves);
             apply_move(&mut self.pawns, moves, src, dst, enemies)
         } else if self.bishops.test_bit(src) {
             let moves = self.get_moves(src, &BISHOP_MOVES, enemies, Movement::Sliding);
@@ -139,7 +156,6 @@ impl Pieces {
                 dst = &dst + direction;
             }
         }
-        print_moves(moves);
         moves
     }
 
@@ -392,10 +408,10 @@ impl Board {
     }
 
     fn square_is_attacked_by(&self, index: u8, attacker: Color) -> bool {
-        let (attacking, defending) = if attacker == Color::White {
-            (&self.white, &self.black)
+        let (attacking, defending, pawn_captures) = if attacker == Color::White {
+            (&self.white, &self.black, &BLACK_PAWN_CAPTURES)
         } else {
-            (&self.black, &self.white)
+            (&self.black, &self.white, &WHITE_PAWN_CAPTURES)
         };
 
         let rook_attack_sources = defending.get_moves(index, &ROOK_MOVES, attacking, Movement::Sliding);
@@ -410,12 +426,41 @@ impl Board {
             return true
         }
 
+        let knight_attack_sources = defending.get_moves(index, &KNIGHT_MOVES, attacking, Movement::Stepping);
+        if knight_attack_sources & attacking.knights != 0 {
+            return true
+        }
+
+        let king_attack_sources = defending.get_moves(index, &KING_QUEEN_MOVES, attacking, Movement::Stepping);
+        if king_attack_sources & attacking.king != 0 {
+            return true
+        }
+
+        let pawn_attack_sources = defending.get_moves(index, pawn_captures, attacking, Movement::Stepping);
+        if pawn_attack_sources & attacking.pawns != 0 {
+            return true
+        }
+
         false
+    }
+
+    fn is_checked(&self, color: Color) -> bool {
+        let king = if color == Color::White {
+            &self.white.king
+        } else {
+            &self.black.king
+        };
+        assert_eq!(1, king.count());
+        let king_index = king.first_bit();
+        self.square_is_attacked_by(king_index, color.other())
     }
 
     fn check_invariants(&self) {
         // No overlapping pieces
         assert_eq!(0, self.white.occupancy() & self.black.occupancy());
+        // One king each
+        assert_eq!(1, self.white.king.count());
+        assert_eq!(1, self.black.king.count());
     }
 }
 
@@ -613,26 +658,26 @@ mod tests {
     fn capture_bishop() {
         let mut board = Board::from_fen("rn1qkbnr/ppp1pppp/8/3p4/4P1b1/8/PPPPBPPP/RNBQK1NR");
         assert!(!board.make_move("e2h5")); // past enemy
-        assert_eq!(2, board.black.bishops.count_ones());
+        assert_eq!(2, board.black.bishops.count());
         assert!(board.make_move("e2g4")); // capture
-        assert_eq!(1, board.black.bishops.count_ones());
+        assert_eq!(1, board.black.bishops.count());
     }
 
     #[test]
     fn white_pawn_capture() {
         let mut board = Board::from_fen("rnbqkbnr/pppp1ppp/8/4p3/3P4/8/PPP1PPPP/RNBQKBNR");
-        assert_eq!(8, board.black.pawns.count_ones());
+        assert_eq!(8, board.black.pawns.count());
         assert!(board.make_move("d4e5")); // capture
-        assert_eq!(7, board.black.pawns.count_ones());
+        assert_eq!(7, board.black.pawns.count());
     }
 
     #[test]
     fn black_pawn_capture() {
         let mut board = Board::from_fen("rnbqkbnr/pppp1ppp/8/4p3/3P4/8/PPP1PPPP/RNBQKBNR");
         board.turn = Color::Black;
-        assert_eq!(8, board.white.pawns.count_ones());
+        assert_eq!(8, board.white.pawns.count());
         assert!(board.make_move("e5d4")); // capture
-        assert_eq!(7, board.white.pawns.count_ones());
+        assert_eq!(7, board.white.pawns.count());
     }
 
     #[test]
@@ -668,6 +713,53 @@ mod tests {
     }
 
     #[test]
+    fn square_is_attacked_by_knight() {
+        let mut board = Board::cleared();
+        board.black.knights.set_bit(str_to_index("a1").unwrap());
+        assert!(board.square_is_attacked_by(str_to_index("b3").unwrap(), Color::Black));
+        assert!(board.square_is_attacked_by(str_to_index("c2").unwrap(), Color::Black));
+        assert!(!board.square_is_attacked_by(str_to_index("c2").unwrap(), Color::White));
+    }
+
+    #[test]
+    fn square_is_attacked_by_king() {
+        let mut board = Board::cleared();
+        board.black.king.set_bit(str_to_index("a1").unwrap());
+        assert!(board.square_is_attacked_by(str_to_index("a2").unwrap(), Color::Black));
+        assert!(board.square_is_attacked_by(str_to_index("b1").unwrap(), Color::Black));
+        assert!(board.square_is_attacked_by(str_to_index("b2").unwrap(), Color::Black));
+        assert!(!board.square_is_attacked_by(str_to_index("a3").unwrap(), Color::Black));
+    }
+
+    #[test]
+    fn square_is_attacked_by_black_pawn() {
+        let mut board = Board::cleared();
+        board.black.pawns.set_bit(str_to_index("b7").unwrap());
+        board.print();
+        assert!(board.square_is_attacked_by(str_to_index("c6").unwrap(), Color::Black));
+        assert!(board.square_is_attacked_by(str_to_index("a6").unwrap(), Color::Black));
+        assert!(!board.square_is_attacked_by(str_to_index("b6").unwrap(), Color::Black));
+    }
+
+    #[test]
+    fn square_is_attacked_by_white_pawn() {
+        let mut board = Board::cleared();
+        board.white.pawns.set_bit(str_to_index("a2").unwrap());
+        board.print();
+        assert!(board.square_is_attacked_by(str_to_index("b3").unwrap(), Color::White));
+        assert!(!board.square_is_attacked_by(str_to_index("b1").unwrap(), Color::Black));
+    }
+
+    #[test]
+    fn black_is_checked() {
+        let mut board = Board::cleared();
+        board.black.king.set_bit(str_to_index("a2").unwrap());
+        assert!(!board.is_checked(Color::Black));
+        board.white.rooks.set_bit(str_to_index("a1").unwrap());
+        assert!(board.is_checked(Color::Black));
+    }
+
+    #[test]
     fn test_str_to_index() {
         assert!(str_to_index("a0").is_none());
         assert!(str_to_index("a9").is_none());
@@ -697,6 +789,9 @@ fn main() {
     let print_state = |board: &Board| {
         println!("FEN: {}", board.as_fen());
         board.print();
+        if board.is_checked(board.turn) {
+            print!("Check! ");
+        };
         println!("{:?}'s turn", board.turn);
     };
 
