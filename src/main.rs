@@ -864,7 +864,7 @@ mod tests {
         let board = Board::initial_position();
         let moves = board.white.get_moves(&board.black, Color::White);
         assert_eq!(64, moves.len());
-        let num_opening_moves = moves.into_iter().fold(0, |acc, m| acc + m.count());
+        let num_opening_moves = moves.iter().fold(0, |acc, m| acc + m.count());
         assert_eq!(20, num_opening_moves);
     }
 
@@ -872,8 +872,23 @@ mod tests {
     fn scholars_mate() {
         let board = Board::from_fen("r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR");
         let moves = board.black.get_moves(&board.white, Color::Black);
-        let num_moves_in_mate = moves.into_iter().fold(0, |acc, m| acc + m.count());
+        let num_moves_in_mate = moves.iter().fold(0, |acc, m| acc + m.count());
         assert_eq!(0, num_moves_in_mate);
+    }
+
+    #[test]
+    fn peft_test_position_1() {
+        // https://gist.github.com/peterellisjones/8c46c28141c162d1d8a0f0badbc9cff9
+        let board = Board::from_fen("2r5/3pk3/8/2P5/8/2K5/8/8");
+        let moves = board.white.get_moves(&board.black, Color::White);
+        assert_eq!(9, moves.iter().fold(0, |acc, m| acc + m.count()));
+    }
+
+    #[test]
+    fn peft_test_position_2() {
+        let board = Board::from_fen("r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR");
+        let moves = board.white.get_moves(&board.black, Color::White);
+        assert_eq!(19, moves.iter().fold(0, |acc, m| acc + m.count()));
     }
 
     #[test]
