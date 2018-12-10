@@ -1,5 +1,6 @@
 type BitBoard = u64;
 
+#[derive(Copy, Clone)]
 struct Pieces {
     pawns: BitBoard,
     rooks: BitBoard,
@@ -178,8 +179,51 @@ impl Pieces {
             & enemies.occupancy();
         single_push | double_push | captures
     }
+
+    fn square_is_attacked_by(&self, index: u8, enemies: &Pieces, attacker: Color) -> bool {
+        let rook_attack_sources = self.get_moves(index, &ROOK_MOVES, enemies, Movement::Sliding);
+        let enemy_rooks_and_queens = enemies.rooks | enemies.queens;
+        if rook_attack_sources & enemy_rooks_and_queens != 0 {
+            return true
+        }
+
+        let bishop_attack_sources = self.get_moves(index, &BISHOP_MOVES, enemies, Movement::Sliding);
+        let enemy_bishops_and_queens = enemies.bishops | enemies.queens;
+        if bishop_attack_sources & enemy_bishops_and_queens != 0 {
+            return true
+        }
+
+        let knight_attack_sources = self.get_moves(index, &KNIGHT_MOVES, enemies, Movement::Stepping);
+        if knight_attack_sources & enemies.knights != 0 {
+            return true
+        }
+
+        let king_attack_sources = self.get_moves(index, &KING_QUEEN_MOVES, enemies, Movement::Stepping);
+        if king_attack_sources & enemies.king != 0 {
+            return true
+        }
+
+        let pawn_captures = if attacker == Color::White {
+            &BLACK_PAWN_CAPTURES
+        } else {
+            &WHITE_PAWN_CAPTURES
+        };
+        let pawn_attack_sources = self.get_moves(index, pawn_captures, enemies, Movement::Stepping);
+        if pawn_attack_sources & enemies.pawns != 0 {
+            return true
+        }
+
+        false
+    }
+
+    fn is_checked_by(&self, enemies: &Pieces, attacker: Color) -> bool {
+        assert_eq!(1, self.king.count());
+        let king_index = self.king.first_bit();
+        self.square_is_attacked_by(king_index, enemies, attacker)
+    }
 }
 
+#[derive(Copy, Clone)]
 struct Board {
     white: Pieces,
     black: Pieces,
@@ -394,73 +438,45 @@ impl Board {
             None => return false,
         };
 
+        let self_before_move = *self;
+
         if self.turn == Color::White {
-            if self.white.make_move(&mut self.black, src, dst, self.turn) {
-                self.turn = Color::Black;
-                return true;
+            if !self.white.make_move(&mut self.black, src, dst, self.turn) {
+                return false;
             }
-        } else if self.black.make_move(&mut self.white, src, dst, self.turn) {
-            self.turn = Color::White;
-            return true;
+        } else if !self.black.make_move(&mut self.white, src, dst, self.turn) {
+            return false;
         }
 
-        false
+        if self.is_checked(self.turn) {
+            *self = self_before_move;
+            return false;
+        }
+
+        self.turn = self.turn.other();
+
+        true
     }
 
     fn square_is_attacked_by(&self, index: u8, attacker: Color) -> bool {
-        let (attacking, defending, pawn_captures) = if attacker == Color::White {
-            (&self.white, &self.black, &BLACK_PAWN_CAPTURES)
+        if attacker == Color::White {
+            self.black.square_is_attacked_by(index, &self.white, attacker)
         } else {
-            (&self.black, &self.white, &WHITE_PAWN_CAPTURES)
-        };
-
-        let rook_attack_sources = defending.get_moves(index, &ROOK_MOVES, attacking, Movement::Sliding);
-        let attacking_rooks_and_queens = attacking.rooks | attacking.queens;
-        if rook_attack_sources & attacking_rooks_and_queens != 0 {
-            return true
+            self.white.square_is_attacked_by(index, &self.black, attacker)
         }
-
-        let bishop_attack_sources = defending.get_moves(index, &BISHOP_MOVES, attacking, Movement::Sliding);
-        let attacking_bishops_and_queens = attacking.bishops | attacking.queens;
-        if bishop_attack_sources & attacking_bishops_and_queens != 0 {
-            return true
-        }
-
-        let knight_attack_sources = defending.get_moves(index, &KNIGHT_MOVES, attacking, Movement::Stepping);
-        if knight_attack_sources & attacking.knights != 0 {
-            return true
-        }
-
-        let king_attack_sources = defending.get_moves(index, &KING_QUEEN_MOVES, attacking, Movement::Stepping);
-        if king_attack_sources & attacking.king != 0 {
-            return true
-        }
-
-        let pawn_attack_sources = defending.get_moves(index, pawn_captures, attacking, Movement::Stepping);
-        if pawn_attack_sources & attacking.pawns != 0 {
-            return true
-        }
-
-        false
     }
 
     fn is_checked(&self, color: Color) -> bool {
-        let king = if color == Color::White {
-            &self.white.king
+        if color == Color::White {
+            self.white.is_checked_by(&self.black, Color::Black)
         } else {
-            &self.black.king
-        };
-        assert_eq!(1, king.count());
-        let king_index = king.first_bit();
-        self.square_is_attacked_by(king_index, color.other())
+            self.black.is_checked_by(&self.white, Color::White)
+        }
     }
 
     fn check_invariants(&self) {
         // No overlapping pieces
         assert_eq!(0, self.white.occupancy() & self.black.occupancy());
-        // One king each
-        assert_eq!(1, self.white.king.count());
-        assert_eq!(1, self.black.king.count());
     }
 }
 
@@ -757,6 +773,21 @@ mod tests {
         assert!(!board.is_checked(Color::Black));
         board.white.rooks.set_bit(str_to_index("a1").unwrap());
         assert!(board.is_checked(Color::Black));
+    }
+
+    #[test]
+    fn illegal_to_be_checked_after_move() {
+        let mut board = Board::cleared();
+        board.white.king.set_bit(str_to_index("a2").unwrap());
+        board.black.rooks.set_bit(str_to_index("a1").unwrap());
+        assert!(board.is_checked(Color::White));
+        let fen = board.as_fen();
+        board.print();
+        assert!(!board.make_move("a2a3")); // illegal, still checked
+        assert_eq!(fen, board.as_fen()); // unchanged
+        assert_eq!(Color::White, board.turn); // unchanged
+        assert!(board.make_move("a2b2")); // out of check
+        assert_eq!(Color::Black, board.turn);
     }
 
     #[test]
