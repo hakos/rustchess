@@ -206,6 +206,7 @@ impl Pieces {
                 self.get_moves_from_square(src, &KING_QUEEN_MOVES, enemies, Movement::Sliding);
         });
 
+        assert_eq!(1, self.king.count());
         let king_index = self.king.first_bit();
         moves[king_index as usize] =
             self.get_moves_from_square(king_index, &KING_QUEEN_MOVES, enemies, Movement::Stepping);
