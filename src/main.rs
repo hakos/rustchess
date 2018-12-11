@@ -112,6 +112,65 @@ fn is_promotion_rank(dst: u8, color: Color) -> bool {
     promotion_rank.test_bit(dst)
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
+const WHITE_KING_SIDE_CASTLING_SAFE_SQUARES: BitBoard =
+    0b01110000_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
+const WHITE_KING_SIDE_CASTLING_EMPTY_SQUARES: BitBoard =
+    0b01100000_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
+
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
+const WHITE_QUEEN_SIDE_CASTLING_SAFE_SQUARES: BitBoard =
+    0b00011100_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
+const WHITE_QUEEN_SIDE_CASTLING_EMPTY_SQUARES: BitBoard =
+    0b00001110_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
+
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
+const BLACK_KING_SIDE_CASTLING_SAFE_SQUARES: BitBoard =
+    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_01110000;
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
+const BLACK_KING_SIDE_CASTLING_EMPTY_SQUARES: BitBoard =
+    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_01100000;
+
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
+const BLACK_QUEEN_SIDE_CASTLING_SAFE_SQUARES: BitBoard =
+    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00011100;
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
+const BLACK_QUEEN_SIDE_CASTLING_EMPTY_SQUARES: BitBoard =
+    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00001110;
+
+const A1: u8 = 56;
+//const B1: u8 = 57;
+const C1: u8 = 58;
+const D1: u8 = 59;
+const E1: u8 = 60;
+const F1: u8 = 61;
+const G1: u8 = 62;
+const H1: u8 = 63;
+
+const A8: u8 = 0;
+//const B8: u8 = 1;
+const C8: u8 = 2;
+const D8: u8 = 3;
+const E8: u8 = 4;
+const F8: u8 = 5;
+const G8: u8 = 6;
+const H8: u8 = 7;
+
+fn is_white_king_side_castling(src: u8, dst: u8) -> bool {
+    src == E1 && dst == G1
+}
+fn is_white_queen_side_castling(src: u8, dst: u8) -> bool {
+    src == E1 && dst == C1
+}
+fn is_black_king_side_castling(src: u8, dst: u8) -> bool {
+    src == E8 && dst == G8
+}
+fn is_black_queen_side_castling(src: u8, dst: u8) -> bool {
+    src == E8 && dst == C8
+}
+
 impl Pieces {
     fn cleared() -> Pieces {
         Pieces {
@@ -178,11 +237,36 @@ impl Pieces {
             apply_move(&mut self.queens, src, dst, enemies);
         } else if self.king.test_bit(src) {
             apply_move(&mut self.king, src, dst, enemies);
+            self.handle_castling(src, dst);
         } else {
             panic!("Unknown piece!");
         }
 
         true
+    }
+
+    fn handle_castling(&mut self, src: u8, dst: u8) {
+        if is_white_king_side_castling(src, dst) {
+            self.rooks.clear_bit(H1);
+            self.rooks.set_bit(F1);
+            self.can_king_side_castle = false;
+            self.can_queen_side_castle = false;
+        } else if is_white_queen_side_castling(src, dst) {
+            self.rooks.clear_bit(A1);
+            self.rooks.set_bit(D1);
+            self.can_king_side_castle = false;
+            self.can_queen_side_castle = false;
+        } else if is_black_king_side_castling(src, dst) {
+            self.rooks.clear_bit(H8);
+            self.rooks.set_bit(F8);
+            self.can_king_side_castle = false;
+            self.can_queen_side_castle = false;
+        } else if is_black_queen_side_castling(src, dst) {
+            self.rooks.clear_bit(A8);
+            self.rooks.set_bit(D8);
+            self.can_king_side_castle = false;
+            self.can_queen_side_castle = false;
+        }
     }
 
     fn make_move(
@@ -228,6 +312,77 @@ impl Pieces {
         moves
     }
 
+    fn castling_squares_ok(
+        &self,
+        enemies: &Pieces,
+        color: Color,
+        required_empty: BitBoard,
+        required_safe: BitBoard,
+    ) -> bool {
+        let empty = self.empty() & enemies.empty();
+        let all_empty = required_empty & empty == required_empty;
+        if !all_empty {
+            return false;
+        }
+
+        let mut all_safe = true;
+        required_safe.for_each_bit(|index| {
+            if self.square_is_attacked_by(index, enemies, color.other()) {
+                all_safe = false;
+            }
+        });
+        all_safe
+    }
+
+    fn get_castling_moves(&self, enemies: &Pieces, color: Color) -> BitBoard {
+        let mut moves: BitBoard = 0;
+        if color == Color::White {
+            if self.can_king_side_castle
+                && self.castling_squares_ok(
+                    enemies,
+                    color,
+                    WHITE_KING_SIDE_CASTLING_EMPTY_SQUARES,
+                    WHITE_KING_SIDE_CASTLING_SAFE_SQUARES,
+                )
+            {
+                moves.set_bit(G1);
+            }
+            if self.can_queen_side_castle
+                && self.castling_squares_ok(
+                    enemies,
+                    color,
+                    WHITE_QUEEN_SIDE_CASTLING_EMPTY_SQUARES,
+                    WHITE_QUEEN_SIDE_CASTLING_SAFE_SQUARES,
+                )
+            {
+                moves.set_bit(C1);
+            }
+        } else {
+            if self.can_king_side_castle
+                && self.castling_squares_ok(
+                    enemies,
+                    color,
+                    BLACK_KING_SIDE_CASTLING_EMPTY_SQUARES,
+                    BLACK_KING_SIDE_CASTLING_SAFE_SQUARES,
+                )
+            {
+                moves.set_bit(G8);
+            }
+            if self.can_queen_side_castle
+                && self.castling_squares_ok(
+                    enemies,
+                    color,
+                    BLACK_QUEEN_SIDE_CASTLING_EMPTY_SQUARES,
+                    BLACK_QUEEN_SIDE_CASTLING_SAFE_SQUARES,
+                )
+            {
+                moves.set_bit(C8);
+            }
+        }
+
+        moves
+    }
+
     fn get_moves(&self, enemies: &Pieces, color: Color) -> [BitBoard; 64] {
         let mut moves: [BitBoard; 64] = [0; 64];
 
@@ -261,8 +416,10 @@ impl Pieces {
 
         assert_eq!(1, self.king.count());
         let king_index = self.king.first_bit();
-        moves[king_index as usize] =
+        let king_moves =
             self.get_moves_from_square(king_index, &KING_QUEEN_MOVES, enemies, Movement::Stepping);
+        let castling_moves = self.get_castling_moves(enemies, color);
+        moves[king_index as usize] = king_moves | castling_moves;
 
         self.remove_moves_that_leave_us_checked(&mut moves, enemies, color);
 
@@ -503,7 +660,7 @@ impl Board {
 
     fn from_fen(fen: &str) -> Board {
         let mut board = Board::cleared();
-        let mut fen_parts = fen.split(" ");
+        let mut fen_parts = fen.split(' ');
 
         let mut index = 0;
         for c in fen_parts.next().unwrap().chars() {
@@ -565,7 +722,8 @@ impl Board {
     }
 
     fn as_fen(&self) -> String {
-        let position = self.as_unicode()
+        let position = self
+            .as_unicode()
             .chunks(8)
             .map(|rank| rank.iter().map(|c| unicode_to_fen(*c)))
             .map(merge_spaces)
@@ -1059,26 +1217,98 @@ mod tests {
         assert_eq!("K7/7P/8/8/8/8/8/k7 w -", board.as_fen());
     }
 
+    // https://gist.github.com/peterellisjones/8c46c28141c162d1d8a0f0badbc9cff9
+
     #[test]
     fn peft_test_position_1() {
-        // https://gist.github.com/peterellisjones/8c46c28141c162d1d8a0f0badbc9cff9
-        let board = Board::from_fen("2r5/3pk3/8/2P5/8/2K5/8/8");
-        let move_count = board.white.count_moves(&board.black, Color::White);
-        assert_eq!(9, move_count);
+        let board = Board::from_fen("r6r/1b2k1bq/8/8/7B/8/8/R3K2R b QK");
+        let move_count = board.black.count_moves(&board.white, Color::Black);
+        assert_eq!(8, move_count);
     }
 
     #[test]
     fn peft_test_position_2() {
-        let board = Board::from_fen("r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR");
+        let board = Board::from_fen("8/8/8/2k5/2pP4/8/B7/4K3 b - d3");
+        let move_count = board.black.count_moves(&board.white, Color::Black);
+        assert_eq!(7, move_count); // should be 8, missing en-passent
+    }
+
+    #[test]
+    fn peft_test_position_3() {
+        let board = Board::from_fen("r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR w QqKk");
         let move_count = board.white.count_moves(&board.black, Color::White);
         assert_eq!(19, move_count);
     }
 
     #[test]
-    fn peft_test_position_3() {
-        let board = Board::from_fen("rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R");
+    fn peft_test_position_4() {
+        let board = Board::from_fen("r3k2r/p1pp1pb1/bn2Qnp1/2qPN3/1p2P3/2N5/PPPBBPPP/R3K2R b QqKk");
+        let move_count = board.black.count_moves(&board.white, Color::Black);
+        assert_eq!(5, move_count);
+    }
+
+    #[test]
+    fn peft_test_position_5() {
+        let board = Board::from_fen("2kr3r/p1ppqpb1/bn2Qnp1/3PN3/1p2P3/2N5/PPPBBPPP/R3K2R b QK");
+        let move_count = board.black.count_moves(&board.white, Color::Black);
+        assert_eq!(44, move_count);
+    }
+
+    #[test]
+    fn peft_test_position_6() {
+        let board = Board::from_fen("rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R w QK");
         let move_count = board.white.count_moves(&board.black, Color::White);
-        assert_eq!(38, move_count); // missing castling
+        assert_eq!(39, move_count);
+    }
+
+    #[test]
+    fn peft_test_position_7() {
+        let board = Board::from_fen("2r5/3pk3/8/2P5/8/2K5/8/8 w -");
+        let move_count = board.white.count_moves(&board.black, Color::White);
+        assert_eq!(9, move_count);
+    }
+
+    #[test]
+    fn white_king_side_castling() {
+        let mut board = Board::from_fen("rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R w QK");
+        assert!(board.make_move("e1g1"));
+        assert_eq!(
+            "rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB2RK1 b -",
+            board.as_fen()
+        );
+    }
+
+    #[test]
+    fn white_queen_side_castling() {
+        let mut board =
+            Board::from_fen("r3k2r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/R3K2R w KQkq");
+        assert!(board.make_move("e1c1"));
+        assert_eq!(
+            "r3k2r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R b kq",
+            board.as_fen()
+        );
+    }
+
+    #[test]
+    fn black_king_side_castling() {
+        let mut board =
+            Board::from_fen("r3k2r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R b kq");
+        assert!(board.make_move("e8g8"));
+        assert_eq!(
+            "r4rk1/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R w -",
+            board.as_fen()
+        );
+    }
+
+    #[test]
+    fn black_queen_side_castling() {
+        let mut board =
+            Board::from_fen("r3k2r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R b kq");
+        assert!(board.make_move("e8c8"));
+        assert_eq!(
+            "2kr3r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R w -",
+            board.as_fen()
+        );
     }
 
     #[test]
