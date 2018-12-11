@@ -63,7 +63,7 @@ trait BitSet {
     fn clear_bit(&mut self, bit: u8);
     fn set_bit(&mut self, bit: u8);
     fn test_bit(&self, bit: u8) -> bool;
-    fn count(&self) -> u8;
+    fn count(&self) -> u32;
     fn first_bit(&self) -> u8;
     fn for_each_bit<F>(&self, f: F)
     where
@@ -80,8 +80,8 @@ impl BitSet for BitBoard {
     fn test_bit(&self, bit: u8) -> bool {
         *self & bitmask(bit) != 0
     }
-    fn count(&self) -> u8 {
-        self.count_ones() as u8
+    fn count(&self) -> u32 {
+        self.count_ones()
     }
     fn first_bit(&self) -> u8 {
         self.trailing_zeros() as u8
@@ -97,6 +97,17 @@ impl BitSet for BitBoard {
             copy.clear_bit(next_bit);
         }
     }
+}
+
+fn is_promotion_rank(dst: u8, color: Color) -> bool {
+    const RANK_1: u64 = 0xff_00_00_00_00_00_00_00;
+    const RANK_8: u64 = 0x00_00_00_00_00_00_00_ff;
+    let promotion_rank = if color == Color::White {
+        RANK_8
+    } else {
+        RANK_1
+    };
+    promotion_rank.test_bit(dst)
 }
 
 impl Pieces {
@@ -128,12 +139,16 @@ impl Pieces {
         self.king.clear_bit(index);
     }
 
-    fn apply_move_impl(&mut self, enemies: &mut Pieces, src: u8, dst: u8, promotion: Option<Promotion>, color: Color) -> bool {
+    fn apply_move_impl(
+        &mut self,
+        enemies: &mut Pieces,
+        src: u8,
+        dst: u8,
+        promotion: Option<Promotion>,
+        color: Color,
+    ) -> bool {
         if self.pawns.test_bit(src) {
-            const RANK_1: u64 = 0xff_00_00_00_00_00_00_00;
-            const RANK_8: u64 = 0x00_00_00_00_00_00_00_ff;
-            let promotion_rank = if color == Color::White { RANK_8 } else { RANK_1 };
-            if promotion_rank.test_bit(dst) {
+            if is_promotion_rank(dst, color) {
                 match promotion {
                     Some(Promotion::Bishop) => self.bishops.set_bit(dst),
                     Some(Promotion::Rook) => self.rooks.set_bit(dst),
@@ -166,7 +181,14 @@ impl Pieces {
         true
     }
 
-    fn make_move(&mut self, enemies: &mut Pieces, src: u8, dst: u8, promotion: Option<Promotion>, color: Color) -> bool {
+    fn make_move(
+        &mut self,
+        enemies: &mut Pieces,
+        src: u8,
+        dst: u8,
+        promotion: Option<Promotion>,
+        color: Color,
+    ) -> bool {
         let allowed_moves = self.get_moves(enemies, color)[src as usize];
         if allowed_moves.test_bit(dst) {
             self.apply_move_impl(enemies, src, dst, promotion, color)
@@ -241,6 +263,25 @@ impl Pieces {
         self.remove_moves_that_leave_us_checked(&mut moves, enemies, color);
 
         moves
+    }
+
+    #[cfg(test)]
+    fn count_moves(&self, enemies: &Pieces, color: Color) -> u32 {
+        let moves = self.get_moves(enemies, color);
+        let num_moves: u32 = moves.iter().map(|dsts| dsts.count()).sum();
+
+        let moves_from_promotion_squares = if color == Color::White {
+            moves.iter().enumerate().skip(8).take(8)
+        } else {
+            moves.iter().enumerate().skip(48).take(8)
+        };
+
+        let num_promotions: u32 = moves_from_promotion_squares
+            .filter(|(src, _dsts)| self.pawns.test_bit(*src as u8))
+            .map(|(_src, dsts)| dsts.count())
+            .sum();
+
+        num_moves + 3 * num_promotions
     }
 
     fn remove_moves_that_leave_us_checked(
@@ -541,16 +582,24 @@ impl Board {
                 'b' => Some(Promotion::Bishop),
                 _ => return false,
             }
-        } else { None };
+        } else {
+            None
+        };
 
         // Copy to be able to restore if move ends up in check
         let self_before_move = *self;
 
         if self.turn == Color::White {
-            if !self.white.make_move(&mut self.black, src, dst, promotion, self.turn) {
+            if !self
+                .white
+                .make_move(&mut self.black, src, dst, promotion, self.turn)
+            {
                 return false;
             }
-        } else if !self.black.make_move(&mut self.white, src, dst, promotion, self.turn) {
+        } else if !self
+            .black
+            .make_move(&mut self.white, src, dst, promotion, self.turn)
+        {
             return false;
         }
 
@@ -898,17 +947,14 @@ mod tests {
     #[test]
     fn initial_moves() {
         let board = Board::initial_position();
-        let moves = board.white.get_moves(&board.black, Color::White);
-        assert_eq!(64, moves.len());
-        let num_opening_moves = moves.iter().fold(0, |acc, m| acc + m.count());
+        let num_opening_moves = board.white.count_moves(&board.black, Color::White);
         assert_eq!(20, num_opening_moves);
     }
 
     #[test]
     fn scholars_mate() {
         let board = Board::from_fen("r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR");
-        let moves = board.black.get_moves(&board.white, Color::Black);
-        let num_moves_in_mate = moves.iter().fold(0, |acc, m| acc + m.count());
+        let num_moves_in_mate = board.black.count_moves(&board.white, Color::Black);
         assert_eq!(0, num_moves_in_mate);
     }
 
@@ -958,31 +1004,38 @@ mod tests {
     fn peft_test_position_1() {
         // https://gist.github.com/peterellisjones/8c46c28141c162d1d8a0f0badbc9cff9
         let board = Board::from_fen("2r5/3pk3/8/2P5/8/2K5/8/8");
-        let moves = board.white.get_moves(&board.black, Color::White);
-        assert_eq!(9, moves.iter().fold(0, |acc, m| acc + m.count()));
+        let move_count = board.white.count_moves(&board.black, Color::White);
+        assert_eq!(9, move_count);
     }
 
     #[test]
     fn peft_test_position_2() {
         let board = Board::from_fen("r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR");
-        let moves = board.white.get_moves(&board.black, Color::White);
-        assert_eq!(19, moves.iter().fold(0, |acc, m| acc + m.count()));
+        let move_count = board.white.count_moves(&board.black, Color::White);
+        assert_eq!(19, move_count);
+    }
+
+    #[test]
+    fn peft_test_position_3() {
+        let board = Board::from_fen("rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R");
+        let move_count = board.white.count_moves(&board.black, Color::White);
+        assert_eq!(38, move_count); // missing castling
     }
 
     #[test]
     fn max_moves_1() {
         // https://www.chessprogramming.org/Encoding_Moves
         let board = Board::from_fen("R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1");
-        let moves = board.white.get_moves(&board.black, Color::White);
-        assert_eq!(218, moves.iter().fold(0, |acc, m| acc + m.count()));
+        let move_count = board.white.count_moves(&board.black, Color::White);
+        assert_eq!(218, move_count);
     }
 
     #[test]
     fn max_moves_2() {
         // https://www.chessprogramming.org/Encoding_Moves
         let board = Board::from_fen("3Q4/1Q4Q1/4Q3/2Q4R/Q4Q2/3Q4/1Q4Rp/1K1BBNNk");
-        let moves = board.white.get_moves(&board.black, Color::White);
-        assert_eq!(218, moves.iter().fold(0, |acc, m| acc + m.count()));
+        let move_count = board.white.count_moves(&board.black, Color::White);
+        assert_eq!(218, move_count);
     }
 
     #[test]
