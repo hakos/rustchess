@@ -892,6 +892,22 @@ mod tests {
     }
 
     #[test]
+    fn max_moves_1() {
+        // https://www.chessprogramming.org/Encoding_Moves
+        let board = Board::from_fen("R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1");
+        let moves = board.white.get_moves(&board.black, Color::White);
+        assert_eq!(218, moves.iter().fold(0, |acc, m| acc + m.count()));
+    }
+
+    #[test]
+    fn max_moves_2() {
+        // https://www.chessprogramming.org/Encoding_Moves
+        let board = Board::from_fen("3Q4/1Q4Q1/4Q3/2Q4R/Q4Q2/3Q4/1Q4Rp/1K1BBNNk");
+        let moves = board.white.get_moves(&board.black, Color::White);
+        assert_eq!(218, moves.iter().fold(0, |acc, m| acc + m.count()));
+    }
+
+    #[test]
     fn test_str_to_index() {
         assert!(str_to_index("a0").is_none());
         assert!(str_to_index("a9").is_none());
