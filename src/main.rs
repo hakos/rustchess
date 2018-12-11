@@ -32,6 +32,14 @@ enum Movement {
     Stepping,
 }
 
+#[derive(Debug, PartialEq, Copy, Clone)]
+enum Promotion {
+    Rook,
+    Knight,
+    Bishop,
+    Queen,
+}
+
 #[allow(dead_code)]
 fn print_bits(moves: BitBoard) {
     let mut chars = ['.'; 64];
@@ -120,9 +128,27 @@ impl Pieces {
         self.king.clear_bit(index);
     }
 
-    fn apply_move_impl(&mut self, enemies: &mut Pieces, src: u8, dst: u8) {
+    fn apply_move_impl(&mut self, enemies: &mut Pieces, src: u8, dst: u8, promotion: Option<Promotion>, color: Color) -> bool {
         if self.pawns.test_bit(src) {
-            apply_move(&mut self.pawns, src, dst, enemies);
+            const RANK_1: u64 = 0xff_00_00_00_00_00_00_00;
+            const RANK_8: u64 = 0x00_00_00_00_00_00_00_ff;
+            let promotion_rank = if color == Color::White { RANK_8 } else { RANK_1 };
+            if promotion_rank.test_bit(dst) {
+                match promotion {
+                    Some(Promotion::Bishop) => self.bishops.set_bit(dst),
+                    Some(Promotion::Rook) => self.rooks.set_bit(dst),
+                    Some(Promotion::Knight) => self.knights.set_bit(dst),
+                    Some(Promotion::Queen) => self.queens.set_bit(dst),
+                    None => return false,
+                }
+            } else {
+                match promotion {
+                    Some(_) => return false,
+                    None => self.pawns.set_bit(dst),
+                }
+            }
+            self.pawns.clear_bit(src);
+            enemies.capture(dst);
         } else if self.bishops.test_bit(src) {
             apply_move(&mut self.bishops, src, dst, enemies);
         } else if self.rooks.test_bit(src) {
@@ -136,13 +162,14 @@ impl Pieces {
         } else {
             panic!("Unknown piece!");
         }
+
+        true
     }
 
-    fn make_move(&mut self, enemies: &mut Pieces, src: u8, dst: u8, color: Color) -> bool {
+    fn make_move(&mut self, enemies: &mut Pieces, src: u8, dst: u8, promotion: Option<Promotion>, color: Color) -> bool {
         let allowed_moves = self.get_moves(enemies, color)[src as usize];
         if allowed_moves.test_bit(dst) {
-            self.apply_move_impl(enemies, src, dst);
-            true
+            self.apply_move_impl(enemies, src, dst, promotion, color)
         } else {
             false
         }
@@ -227,7 +254,7 @@ impl Pieces {
             dsts_copy.for_each_bit(|dst| {
                 let mut enemies_copy = *enemies;
                 let mut self_copy = *self;
-                self_copy.apply_move_impl(&mut enemies_copy, src as u8, dst);
+                self_copy.apply_move_impl(&mut enemies_copy, src as u8, dst, None, color);
                 if self_copy.is_checked_by(&enemies_copy, color.other()) {
                     dsts.clear_bit(dst);
                 }
@@ -495,7 +522,7 @@ impl Board {
     }
 
     fn make_move(&mut self, m: &str) -> bool {
-        if m.len() != 4 {
+        if m.len() < 4 || m.len() > 5 {
             return false;
         }
         let src = match str_to_index(&m[0..2]) {
@@ -506,15 +533,24 @@ impl Board {
             Some(dst) => dst,
             None => return false,
         };
+        let promotion = if let Some(c) = m.chars().nth(4) {
+            match c {
+                'q' => Some(Promotion::Queen),
+                'r' => Some(Promotion::Rook),
+                'n' => Some(Promotion::Knight),
+                'b' => Some(Promotion::Bishop),
+                _ => return false,
+            }
+        } else { None };
 
         // Copy to be able to restore if move ends up in check
         let self_before_move = *self;
 
         if self.turn == Color::White {
-            if !self.white.make_move(&mut self.black, src, dst, self.turn) {
+            if !self.white.make_move(&mut self.black, src, dst, promotion, self.turn) {
                 return false;
             }
-        } else if !self.black.make_move(&mut self.white, src, dst, self.turn) {
+        } else if !self.black.make_move(&mut self.white, src, dst, promotion, self.turn) {
             return false;
         }
 
@@ -874,6 +910,48 @@ mod tests {
         let moves = board.black.get_moves(&board.white, Color::Black);
         let num_moves_in_mate = moves.iter().fold(0, |acc, m| acc + m.count());
         assert_eq!(0, num_moves_in_mate);
+    }
+
+    #[test]
+    fn promotion_to_queen() {
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7");
+        assert!(board.make_move("h7h8q"));
+        assert_eq!("K6Q/8/8/8/8/8/8/k7", board.as_fen());
+    }
+
+    #[test]
+    fn promotion_to_bishop() {
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7");
+        assert!(board.make_move("h7h8b"));
+        assert_eq!("K6B/8/8/8/8/8/8/k7", board.as_fen());
+    }
+
+    #[test]
+    fn promotion_to_knight() {
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7");
+        assert!(board.make_move("h7h8n"));
+        assert_eq!("K6N/8/8/8/8/8/8/k7", board.as_fen());
+    }
+
+    #[test]
+    fn promotion_to_rook() {
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7");
+        assert!(board.make_move("h7h8r"));
+        assert_eq!("K6R/8/8/8/8/8/8/k7", board.as_fen());
+    }
+
+    #[test]
+    fn promotion_to_king_not_allowed() {
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7");
+        assert!(!board.make_move("h7h8k"));
+        assert_eq!("K7/7P/8/8/8/8/8/k7", board.as_fen());
+    }
+
+    #[test]
+    fn missing_promotion() {
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7");
+        assert!(!board.make_move("h7h8"));
+        assert_eq!("K7/7P/8/8/8/8/8/k7", board.as_fen());
     }
 
     #[test]
