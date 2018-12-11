@@ -8,6 +8,8 @@ struct Pieces {
     bishops: BitBoard,
     queens: BitBoard,
     king: BitBoard,
+    can_king_side_castle: bool,
+    can_queen_side_castle: bool,
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -119,6 +121,8 @@ impl Pieces {
             bishops: 0,
             queens: 0,
             king: 0,
+            can_king_side_castle: true,
+            can_queen_side_castle: true,
         }
     }
 
@@ -471,6 +475,8 @@ impl Board {
                 bishops: 0b00100100_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
                 queens:  0b00001000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
                 king:    0b00010000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+                can_king_side_castle: true,
+                can_queen_side_castle: true,
             },
             #[cfg_attr(rustfmt, rustfmt_skip)]
             black: Pieces {
@@ -480,6 +486,8 @@ impl Board {
                 bishops: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00100100,
                 queens:  0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00001000,
                 king:    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00010000,
+                can_king_side_castle: true,
+                can_queen_side_castle: true,
             },
             turn: Color::White,
         }
@@ -495,8 +503,9 @@ impl Board {
 
     fn from_fen(fen: &str) -> Board {
         let mut board = Board::cleared();
-        let mut index = 0;
         let mut fen_parts = fen.split(" ");
+
+        let mut index = 0;
         for c in fen_parts.next().unwrap().chars() {
             if let Some(piece) = match c {
                 'r' => Some(&mut board.black.rooks),
@@ -535,11 +544,28 @@ impl Board {
             None => (),
         }
 
+        if let Some(castling) = fen_parts.next() {
+            board.white.can_king_side_castle = false;
+            board.white.can_queen_side_castle = false;
+            board.black.can_king_side_castle = false;
+            board.black.can_queen_side_castle = false;
+            for c in castling.chars() {
+                match c {
+                    'K' => board.white.can_king_side_castle = true,
+                    'Q' => board.white.can_queen_side_castle = true,
+                    'k' => board.black.can_king_side_castle = true,
+                    'q' => board.black.can_queen_side_castle = true,
+                    '-' => (),
+                    _ => panic!("Unknown castling identifier '{}' in FEN string", c),
+                }
+            }
+        }
+
         board
     }
 
     fn as_fen(&self) -> String {
-        let position = &self.as_unicode()
+        let position = self.as_unicode()
             .chunks(8)
             .map(|rank| rank.iter().map(|c| unicode_to_fen(*c)))
             .map(merge_spaces)
@@ -547,11 +573,28 @@ impl Board {
             .join("/");
 
         let turn = match self.turn {
-            Color::White => "w",
-            Color::Black => "b",
+            Color::White => 'w',
+            Color::Black => 'b',
         };
 
-        [position, turn].join(" ")
+        let mut castling = String::new();
+        if self.white.can_king_side_castle {
+            castling.push('K');
+        }
+        if self.white.can_queen_side_castle {
+            castling.push('Q');
+        }
+        if self.black.can_king_side_castle {
+            castling.push('k');
+        }
+        if self.black.can_queen_side_castle {
+            castling.push('q');
+        }
+        if castling.is_empty() {
+            castling.push('-');
+        }
+
+        format!("{} {} {}", position, turn, castling)
     }
 
     fn as_unicode(&self) -> [char; 64] {
@@ -732,7 +775,7 @@ mod tests {
     #[test]
     fn initial_board_fen() {
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w",
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq",
             Board::initial_position().as_fen()
         );
     }
@@ -740,8 +783,8 @@ mod tests {
     #[test]
     fn parse_fen() {
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w",
-            Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w").as_fen(),
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b Kk",
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b Kk").as_fen(),
         );
     }
 
@@ -762,7 +805,7 @@ mod tests {
         assert!(board.make_move("e7e5"));
         assert!(!board.make_move("e4e5")); // occupied
         assert_eq!(
-            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w",
+            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq",
             board.as_fen()
         );
     }
@@ -784,7 +827,7 @@ mod tests {
         board.turn = Color::White;
         assert!(board.make_move("c1d2"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/3P4/8/PPPBPPPP/RN1QKBNR b",
+            "rnbqkbnr/pppppppp/8/8/3P4/8/PPPBPPPP/RN1QKBNR b KQkq",
             board.as_fen()
         );
     }
@@ -798,7 +841,7 @@ mod tests {
         board.turn = Color::White;
         assert!(board.make_move("a1a2"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/P7/8/RPPPPPPP/1NBQKBNR b",
+            "rnbqkbnr/pppppppp/8/8/P7/8/RPPPPPPP/1NBQKBNR b KQkq",
             board.as_fen()
         );
     }
@@ -808,7 +851,7 @@ mod tests {
         let mut board = Board::initial_position();
         assert!(board.make_move("b1c3"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/8/2N5/PPPPPPPP/R1BQKBNR b",
+            "rnbqkbnr/pppppppp/8/8/8/2N5/PPPPPPPP/R1BQKBNR b KQkq",
             board.as_fen()
         );
         assert_eq!(Color::Black, board.turn);
@@ -823,7 +866,7 @@ mod tests {
         assert!(!board.make_move("e1e3")); // too far
         assert!(board.make_move("e1e2"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPPKPPP/RNBQ1BNR b",
+            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPPKPPP/RNBQ1BNR b KQkq",
             board.as_fen()
         );
     }
@@ -835,7 +878,7 @@ mod tests {
         board.turn = Color::White;
         assert!(board.make_move("d1d3"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/3P4/3Q4/PPP1PPPP/RNB1KBNR b",
+            "rnbqkbnr/pppppppp/8/8/3P4/3Q4/PPP1PPPP/RNB1KBNR b KQkq",
             board.as_fen()
         );
     }
@@ -976,44 +1019,44 @@ mod tests {
 
     #[test]
     fn promotion_to_queen() {
-        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w");
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(board.make_move("h7h8q"));
-        assert_eq!("K6Q/8/8/8/8/8/8/k7 b", board.as_fen());
+        assert_eq!("K6Q/8/8/8/8/8/8/k7 b -", board.as_fen());
     }
 
     #[test]
     fn promotion_to_bishop() {
-        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w");
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(board.make_move("h7h8b"));
-        assert_eq!("K6B/8/8/8/8/8/8/k7 b", board.as_fen());
+        assert_eq!("K6B/8/8/8/8/8/8/k7 b -", board.as_fen());
     }
 
     #[test]
     fn promotion_to_knight() {
-        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w");
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(board.make_move("h7h8n"));
-        assert_eq!("K6N/8/8/8/8/8/8/k7 b", board.as_fen());
+        assert_eq!("K6N/8/8/8/8/8/8/k7 b -", board.as_fen());
     }
 
     #[test]
     fn promotion_to_rook() {
-        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w");
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(board.make_move("h7h8r"));
-        assert_eq!("K6R/8/8/8/8/8/8/k7 b", board.as_fen());
+        assert_eq!("K6R/8/8/8/8/8/8/k7 b -", board.as_fen());
     }
 
     #[test]
     fn promotion_to_king_not_allowed() {
-        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w");
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(!board.make_move("h7h8k"));
-        assert_eq!("K7/7P/8/8/8/8/8/k7 w", board.as_fen());
+        assert_eq!("K7/7P/8/8/8/8/8/k7 w -", board.as_fen());
     }
 
     #[test]
     fn missing_promotion() {
-        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w");
+        let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(!board.make_move("h7h8"));
-        assert_eq!("K7/7P/8/8/8/8/8/k7 w", board.as_fen());
+        assert_eq!("K7/7P/8/8/8/8/8/k7 w -", board.as_fen());
     }
 
     #[test]
