@@ -233,11 +233,20 @@ impl Pieces {
                     None => self.pawns.set_bit(dst),
                 }
             }
+            self.pawns.clear_bit(src);
+            enemies.capture(dst);
+            if let Some(en_passant) = *en_passant_target_square {
+                if dst == en_passant {
+                    if color == Color::White {
+                        enemies.capture(dst + 8);
+                    } else {
+                        enemies.capture(dst - 8);
+                    }
+                }
+            };
             if abs_diff(src, dst) == 16 {
                 next_en_passant_target_square = Some((src + dst) / 2);
             }
-            self.pawns.clear_bit(src);
-            enemies.capture(dst);
         } else if self.bishops.test_bit(src) {
             apply_move(&mut self.bishops, src, dst, enemies);
         } else if self.rooks.test_bit(src) {
@@ -290,7 +299,7 @@ impl Pieces {
         color: Color,
         en_passant_target_square: &mut Option<u8>,
     ) -> bool {
-        let allowed_moves = self.get_moves(enemies, color)[src as usize];
+        let allowed_moves = self.get_moves(enemies, color, *en_passant_target_square)[src as usize];
         if allowed_moves.test_bit(dst) {
             self.apply_move_impl(enemies, src, dst, promotion, color, en_passant_target_square)
         } else {
@@ -397,14 +406,17 @@ impl Pieces {
         moves
     }
 
-    fn get_pseudo_legal_moves(&self, enemies: &Pieces, color: Color) -> [BitBoard; 64] {
+    fn get_pseudo_legal_moves(&self, enemies: &Pieces, color: Color, en_passant_target_square: Option<u8>) -> [BitBoard; 64] {
         let mut moves: [BitBoard; 64] = [0; 64];
 
         self.pawns.for_each_bit(|src| {
             moves[src as usize] = if color == Color::White {
-                self.get_white_pawn_moves(src, enemies)
+                self.get_white_pawn_moves(src, enemies, en_passant_target_square)
             } else {
-                self.get_black_pawn_moves(src, enemies)
+                let m = self.get_black_pawn_moves(src, enemies, en_passant_target_square);
+                println!("Pawn moves from {}", index_to_str(src));
+                print_bits(m);
+                m
             };
         });
 
@@ -442,14 +454,14 @@ impl Pieces {
         moves
     }
 
-    fn get_moves(&self, enemies: &Pieces, color: Color) -> [BitBoard; 64] {
-        let mut moves = self.get_pseudo_legal_moves(enemies, color);
-        self.remove_moves_that_leave_us_checked(&mut moves, enemies, color);
+    fn get_moves(&self, enemies: &Pieces, color: Color, en_passant_target_square: Option<u8>) -> [BitBoard; 64] {
+        let mut moves = self.get_pseudo_legal_moves(enemies, color, en_passant_target_square);
+        self.remove_moves_that_leave_us_checked(&mut moves, enemies, color, en_passant_target_square);
         moves
     }
 
-    fn count_moves(&self, enemies: &Pieces, color: Color) -> u32 {
-        let moves = self.get_moves(enemies, color);
+    fn count_moves(&self, enemies: &Pieces, color: Color, en_passant_target_square: Option<u8>) -> u32 {
+        let moves = self.get_moves(enemies, color, en_passant_target_square);
         let num_moves: u32 = moves.iter().map(|dsts| dsts.count()).sum();
 
         let moves_from_promotion_squares = if color == Color::White {
@@ -471,13 +483,15 @@ impl Pieces {
         moves: &mut [BitBoard; 64],
         enemies: &Pieces,
         color: Color,
+        en_passant_target_square: Option<u8>,
     ) {
         for (src, dsts) in moves.iter_mut().enumerate() {
             let dsts_copy = *dsts;
             dsts_copy.for_each_bit(|dst| {
                 let mut enemies_copy = *enemies;
                 let mut self_copy = *self;
-                self_copy.apply_move_impl(&mut enemies_copy, src as u8, dst, None, color, &mut None);
+                let mut en_passant_copy = en_passant_target_square;
+                self_copy.apply_move_impl(&mut enemies_copy, src as u8, dst, None, color, &mut en_passant_copy);
                 if self_copy.is_checked_by(&enemies_copy, color.other()) {
                     dsts.clear_bit(dst);
                 }
@@ -485,25 +499,33 @@ impl Pieces {
         }
     }
 
-    fn get_white_pawn_moves(&self, src: u8, enemies: &Pieces) -> BitBoard {
+    fn get_white_pawn_moves(&self, src: u8, enemies: &Pieces, en_passant_target_square: Option<u8>) -> BitBoard {
         const RANK_4: u64 = 0x00_00_00_ff_00_00_00_00;
         let empty = self.empty() & enemies.empty();
         let single_push = shift_north(bitmask(src)) & empty;
         let double_push = shift_north(single_push) & empty & RANK_4;
+        let mut enemy_squares = enemies.occupancy();
+        if let Some(en_passant) = en_passant_target_square {
+            enemy_squares.set_bit(en_passant);
+        }
         let captures =
             self.get_moves_from_square(src, &WHITE_PAWN_CAPTURES, enemies, Movement::Stepping)
-                & enemies.occupancy();
+                & enemy_squares;
         single_push | double_push | captures
     }
 
-    fn get_black_pawn_moves(&self, src: u8, enemies: &Pieces) -> BitBoard {
+    fn get_black_pawn_moves(&self, src: u8, enemies: &Pieces, en_passant_target_square: Option<u8>) -> BitBoard {
         const RANK_5: u64 = 0x00_00_00_00_ff_00_00_00;
         let empty = self.empty() & enemies.empty();
         let single_push = shift_south(bitmask(src)) & empty;
         let double_push = shift_south(single_push) & empty & RANK_5;
+        let mut enemy_squares = enemies.occupancy();
+        if let Some(en_passant) = en_passant_target_square {
+            enemy_squares.set_bit(en_passant);
+        }
         let captures =
             self.get_moves_from_square(src, &BLACK_PAWN_CAPTURES, enemies, Movement::Stepping)
-                & enemies.occupancy();
+                & enemy_squares;
         single_push | double_push | captures
     }
 
@@ -876,9 +898,9 @@ impl Board {
 
     fn count_moves(&self) -> u32 {
         if self.turn == Color::White {
-            self.white.count_moves(&self.black, self.turn)
+            self.white.count_moves(&self.black, self.turn, self.en_passant_target_square)
         } else {
-            self.black.count_moves(&self.white, self.turn)
+            self.black.count_moves(&self.white, self.turn, self.en_passant_target_square)
         }
     }
 
@@ -1283,7 +1305,7 @@ mod tests {
     #[test]
     fn peft_test_position_2() {
         let board = Board::from_fen("8/8/8/2k5/2pP4/8/B7/4K3 b - d3");
-        assert_eq!(7, board.count_moves()); // should be 8, missing en-passent
+        assert_eq!(8, board.count_moves());
     }
 
     #[test]
@@ -1397,6 +1419,20 @@ mod tests {
         // https://www.chessprogramming.org/Encoding_Moves
         let board = Board::from_fen("3Q4/1Q4Q1/4Q3/2Q4R/Q4Q2/3Q4/1Q4Rp/1K1BBNNk");
         assert_eq!(218, board.count_moves());
+    }
+
+    #[test]
+    fn black_en_passant() {
+        let mut board = Board::from_fen("8/8/8/2k5/2pP4/8/B7/4K3 b - d3");
+        assert!(board.make_move("c4d3"));
+        assert_eq!("8/8/8/2k5/8/3p4/B7/4K3 w - -", board.as_fen());
+    }
+
+    #[test]
+    fn white_en_passant() {
+        let mut board = Board::from_fen("rnbqkb1r/pp1ppppp/5n2/2pP4/8/8/PPP1PPPP/RNBQKBNR w KQkq c6");
+        assert!(board.make_move("d5c6"));
+        assert_eq!("rnbqkb1r/pp1ppppp/2P2n2/8/8/8/PPP1PPPP/RNBQKBNR b KQkq -", board.as_fen())
     }
 
     #[test]
