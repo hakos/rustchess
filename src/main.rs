@@ -443,7 +443,6 @@ impl Pieces {
         moves
     }
 
-    #[cfg(test)]
     fn count_moves(&self, enemies: &Pieces, color: Color) -> u32 {
         let moves = self.get_moves(enemies, color);
         let num_moves: u32 = moves.iter().map(|dsts| dsts.count()).sum();
@@ -866,6 +865,14 @@ impl Board {
             self.black.is_checked_by(&self.white, Color::White)
         }
     }
+
+    fn count_moves(&self) -> u32 {
+        if self.turn == Color::White {
+            self.white.count_moves(&self.black, self.turn)
+        } else {
+            self.black.count_moves(&self.white, self.turn)
+        }
+    }
 }
 
 fn str_to_index(s: &str) -> Option<u8> {
@@ -1181,14 +1188,14 @@ mod tests {
     #[test]
     fn initial_moves() {
         let board = Board::initial_position();
-        let num_opening_moves = board.white.count_moves(&board.black, Color::White);
+        let num_opening_moves = board.count_moves();
         assert_eq!(20, num_opening_moves);
     }
 
     #[test]
     fn scholars_mate() {
-        let board = Board::from_fen("r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR");
-        let num_moves_in_mate = board.black.count_moves(&board.white, Color::Black);
+        let board = Board::from_fen("r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b");
+        let num_moves_in_mate = board.count_moves();
         assert_eq!(0, num_moves_in_mate);
     }
 
@@ -1239,50 +1246,43 @@ mod tests {
     #[test]
     fn peft_test_position_1() {
         let board = Board::from_fen("r6r/1b2k1bq/8/8/7B/8/8/R3K2R b QK");
-        let move_count = board.black.count_moves(&board.white, Color::Black);
-        assert_eq!(8, move_count);
+        assert_eq!(8, board.count_moves());
     }
 
     #[test]
     fn peft_test_position_2() {
         let board = Board::from_fen("8/8/8/2k5/2pP4/8/B7/4K3 b - d3");
-        let move_count = board.black.count_moves(&board.white, Color::Black);
-        assert_eq!(7, move_count); // should be 8, missing en-passent
+        assert_eq!(7, board.count_moves()); // should be 8, missing en-passent
     }
 
     #[test]
     fn peft_test_position_3() {
         let board = Board::from_fen("r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR w QqKk");
-        let move_count = board.white.count_moves(&board.black, Color::White);
-        assert_eq!(19, move_count);
+        assert_eq!(19, board.count_moves());
     }
 
     #[test]
     fn peft_test_position_4() {
         let board = Board::from_fen("r3k2r/p1pp1pb1/bn2Qnp1/2qPN3/1p2P3/2N5/PPPBBPPP/R3K2R b QqKk");
-        let move_count = board.black.count_moves(&board.white, Color::Black);
-        assert_eq!(5, move_count);
+        assert_eq!(5, board.count_moves());
     }
 
     #[test]
     fn peft_test_position_5() {
         let board = Board::from_fen("2kr3r/p1ppqpb1/bn2Qnp1/3PN3/1p2P3/2N5/PPPBBPPP/R3K2R b QK");
-        let move_count = board.black.count_moves(&board.white, Color::Black);
-        assert_eq!(44, move_count);
+        assert_eq!(44, board.count_moves());
     }
 
     #[test]
     fn peft_test_position_6() {
         let board = Board::from_fen("rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R w QK");
-        let move_count = board.white.count_moves(&board.black, Color::White);
-        assert_eq!(39, move_count);
+        assert_eq!(39, board.count_moves());
     }
 
     #[test]
     fn peft_test_position_7() {
         let board = Board::from_fen("2r5/3pk3/8/2P5/8/2K5/8/8 w -");
-        let move_count = board.white.count_moves(&board.black, Color::White);
-        assert_eq!(9, move_count);
+        assert_eq!(9, board.count_moves());
     }
 
     #[test]
@@ -1358,16 +1358,14 @@ mod tests {
     fn max_moves_1() {
         // https://www.chessprogramming.org/Encoding_Moves
         let board = Board::from_fen("R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1");
-        let move_count = board.white.count_moves(&board.black, Color::White);
-        assert_eq!(218, move_count);
+        assert_eq!(218, board.count_moves());
     }
 
     #[test]
     fn max_moves_2() {
         // https://www.chessprogramming.org/Encoding_Moves
         let board = Board::from_fen("3Q4/1Q4Q1/4Q3/2Q4R/Q4Q2/3Q4/1Q4Rp/1K1BBNNk");
-        let move_count = board.white.count_moves(&board.black, Color::White);
-        assert_eq!(218, move_count);
+        assert_eq!(218, board.count_moves());
     }
 
     #[test]
