@@ -112,36 +112,8 @@ fn is_promotion_rank(dst: u8, color: Color) -> bool {
     promotion_rank.test_bit(dst)
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
-const WHITE_KING_SIDE_CASTLING_SAFE_SQUARES: BitBoard =
-    0b01110000_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
-const WHITE_KING_SIDE_CASTLING_EMPTY_SQUARES: BitBoard =
-    0b01100000_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
-
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
-const WHITE_QUEEN_SIDE_CASTLING_SAFE_SQUARES: BitBoard =
-    0b00011100_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
-const WHITE_QUEEN_SIDE_CASTLING_EMPTY_SQUARES: BitBoard =
-    0b00001110_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
-
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
-const BLACK_KING_SIDE_CASTLING_SAFE_SQUARES: BitBoard =
-    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_01110000;
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
-const BLACK_KING_SIDE_CASTLING_EMPTY_SQUARES: BitBoard =
-    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_01100000;
-
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
-const BLACK_QUEEN_SIDE_CASTLING_SAFE_SQUARES: BitBoard =
-    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00011100;
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
-const BLACK_QUEEN_SIDE_CASTLING_EMPTY_SQUARES: BitBoard =
-    0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00001110;
-
 const A1: u8 = 56;
-//const B1: u8 = 57;
+const B1: u8 = 57;
 const C1: u8 = 58;
 const D1: u8 = 59;
 const E1: u8 = 60;
@@ -150,13 +122,25 @@ const G1: u8 = 62;
 const H1: u8 = 63;
 
 const A8: u8 = 0;
-//const B8: u8 = 1;
+const B8: u8 = 1;
 const C8: u8 = 2;
 const D8: u8 = 3;
 const E8: u8 = 4;
 const F8: u8 = 5;
 const G8: u8 = 6;
 const H8: u8 = 7;
+
+const WHITE_KING_SIDE_CASTLING_SAFE_SQUARES: BitBoard = bitmask(E1) | bitmask(F1) | bitmask(G1);
+const WHITE_KING_SIDE_CASTLING_EMPTY_SQUARES: BitBoard = bitmask(F1) | bitmask(G1);
+
+const WHITE_QUEEN_SIDE_CASTLING_SAFE_SQUARES: BitBoard = bitmask(C1) | bitmask(D1) | bitmask(E1);
+const WHITE_QUEEN_SIDE_CASTLING_EMPTY_SQUARES: BitBoard = bitmask(B1) | bitmask(C1) | bitmask(D1);
+
+const BLACK_KING_SIDE_CASTLING_SAFE_SQUARES: BitBoard = bitmask(E8) | bitmask(F8) | bitmask(G8);
+const BLACK_KING_SIDE_CASTLING_EMPTY_SQUARES: BitBoard = bitmask(F8) | bitmask(G8);
+
+const BLACK_QUEEN_SIDE_CASTLING_SAFE_SQUARES: BitBoard = bitmask(C8) | bitmask(D8) | bitmask(E8);
+const BLACK_QUEEN_SIDE_CASTLING_EMPTY_SQUARES: BitBoard = bitmask(B8) | bitmask(C8) | bitmask(D8);
 
 fn is_white_king_side_castling(src: u8, dst: u8) -> bool {
     src == E1 && dst == G1
