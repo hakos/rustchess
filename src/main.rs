@@ -836,7 +836,7 @@ impl Board {
             return false;
         }
 
-        if self.is_checked(self.turn) {
+        if self.is_checked() {
             // Restore board
             *self = self_before_move;
             return false;
@@ -858,20 +858,24 @@ impl Board {
         }
     }
 
-    fn is_checked(&self, color: Color) -> bool {
-        if color == Color::White {
-            self.white.is_checked_by(&self.black, Color::Black)
-        } else {
-            self.black.is_checked_by(&self.white, Color::White)
-        }
-    }
-
     fn count_moves(&self) -> u32 {
         if self.turn == Color::White {
             self.white.count_moves(&self.black, self.turn)
         } else {
             self.black.count_moves(&self.white, self.turn)
         }
+    }
+
+    fn is_checked(&self) -> bool {
+        if self.turn == Color::White {
+            self.white.is_checked_by(&self.black, Color::Black)
+        } else {
+            self.black.is_checked_by(&self.white, Color::White)
+        }
+    }
+
+    fn is_check_mated(&self) -> bool {
+        self.is_checked() && self.count_moves() == 0
     }
 }
 
@@ -1165,9 +1169,10 @@ mod tests {
     fn black_is_checked() {
         let mut board = Board::cleared();
         board.black.king.set_bit(str_to_index("a2").unwrap());
-        assert!(!board.is_checked(Color::Black));
+        board.turn = Color::Black;
+        assert!(!board.is_checked());
         board.white.rooks.set_bit(str_to_index("a1").unwrap());
-        assert!(board.is_checked(Color::Black));
+        assert!(board.is_checked());
     }
 
     #[test]
@@ -1175,7 +1180,7 @@ mod tests {
         let mut board = Board::cleared();
         board.white.king.set_bit(str_to_index("a2").unwrap());
         board.black.rooks.set_bit(str_to_index("a1").unwrap());
-        assert!(board.is_checked(Color::White));
+        assert!(board.is_checked());
         let fen = board.as_fen();
         board.print();
         assert!(!board.make_move("a2a3")); // illegal, still checked
@@ -1197,6 +1202,7 @@ mod tests {
         let board = Board::from_fen("r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b");
         let num_moves_in_mate = board.count_moves();
         assert_eq!(0, num_moves_in_mate);
+        assert!(board.is_check_mated());
     }
 
     #[test]
@@ -1398,7 +1404,11 @@ fn main() {
     let print_state = |board: &Board| {
         println!("FEN: {}", board.as_fen());
         board.print();
-        if board.is_checked(board.turn) {
+        if board.is_check_mated() {
+            println!("Check mate! {:?} wins", board.turn.other());
+            std::process::exit(0);
+        };
+        if board.is_checked() {
             print!("Check! ");
         };
         println!("{:?}'s turn", board.turn);
