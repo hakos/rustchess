@@ -1069,9 +1069,15 @@ impl Board {
         self.is_checked() && self.count_moves() == 0
     }
 
-    fn move_iter(&self) -> MoveIterator {
+    fn pseudo_legal_move_iter(&self) -> MoveIterator {
         MoveIterator {
-            moves: self.get_moves(),
+            moves: if self.turn == Color::White {
+                self.white
+                    .get_pseudo_legal_moves(&self.black, self.en_passant_square, self.turn)
+            } else {
+                self.black
+                    .get_pseudo_legal_moves(&self.white, self.en_passant_square, self.turn)
+            },
             pawns: if self.turn == Color::White {
                 self.white.pawns
             } else {
@@ -1089,15 +1095,16 @@ impl Board {
 
         if depth == 0 {
             return 1;
-        };
+        }
 
-        for m in self.move_iter() {
+        for m in self.pseudo_legal_move_iter() {
             let mut self_copy = *self;
-            assert!(self_copy.make_move_impl(m));
-            let num_children = self_copy.perft(depth - 1, false);
-            num_nodes += num_children;
-            if debug {
-                println!("{}: {}", m, num_children);
+            if self_copy.make_move_impl(m) {
+                let num = self_copy.perft(depth - 1, false);
+                if debug {
+                    println!("{}: {}", m, num);
+                }
+                num_nodes += num;
             }
         }
 
@@ -1439,7 +1446,6 @@ mod tests {
         let board = Board::initial_position();
         let num_opening_moves = board.count_moves();
         assert_eq!(20, num_opening_moves);
-        assert_eq!(20, board.move_iter().count());
     }
 
     #[test]
@@ -1596,7 +1602,7 @@ mod tests {
     #[test]
     fn reavealing_own_king_in_check_by_promoting_pawn_not_allowed() {
         let board = Board::from_fen("r1bq1k1r/pp1Pbppp/n1p5/8/2B5/8/PPPKNnPP/RNBQ3R w - -");
-        assert_eq!(32, board.move_iter().count());
+        assert_eq!(32, board.count_moves());
     }
 
     #[test]
@@ -1673,7 +1679,6 @@ mod tests {
         // https://www.chessprogramming.org/Encoding_Moves
         let board = Board::from_fen("R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1");
         assert_eq!(218, board.count_moves());
-        assert_eq!(218, board.move_iter().count());
     }
 
     #[test]
@@ -1681,7 +1686,6 @@ mod tests {
         // https://www.chessprogramming.org/Encoding_Moves
         let board = Board::from_fen("3Q4/1Q4Q1/4Q3/2Q4R/Q4Q2/3Q4/1Q4Rp/1K1BBNNk");
         assert_eq!(218, board.count_moves());
-        assert_eq!(218, board.move_iter().count());
     }
 
     #[test]
