@@ -213,8 +213,8 @@ impl Pieces {
         src: u8,
         dst: u8,
         promotion: Option<Promotion>,
-        color: Color,
         en_passant_square: &mut Option<u8>,
+        color: Color,
     ) -> bool {
         let mut next_en_passant_square = None;
 
@@ -296,12 +296,12 @@ impl Pieces {
         src: u8,
         dst: u8,
         promotion: Option<Promotion>,
-        color: Color,
         en_passant_square: &mut Option<u8>,
+        color: Color,
     ) -> bool {
-        let allowed_moves = self.get_moves(enemies, color, *en_passant_square)[src as usize];
+        let allowed_moves = self.get_moves(enemies, *en_passant_square, color)[src as usize];
         if allowed_moves.test_bit(dst) {
-            self.apply_move_impl(enemies, src, dst, promotion, color, en_passant_square)
+            self.apply_move_impl(enemies, src, dst, promotion, en_passant_square, color)
         } else {
             false
         }
@@ -409,8 +409,8 @@ impl Pieces {
     fn get_pseudo_legal_moves(
         &self,
         enemies: &Pieces,
-        color: Color,
         en_passant_square: Option<u8>,
+        color: Color,
     ) -> [BitBoard; 64] {
         let mut moves: [BitBoard; 64] = [0; 64];
 
@@ -459,16 +459,16 @@ impl Pieces {
     fn get_moves(
         &self,
         enemies: &Pieces,
-        color: Color,
         en_passant_square: Option<u8>,
+        color: Color,
     ) -> [BitBoard; 64] {
-        let mut moves = self.get_pseudo_legal_moves(enemies, color, en_passant_square);
-        self.remove_moves_that_leave_us_checked(&mut moves, enemies, color, en_passant_square);
+        let mut moves = self.get_pseudo_legal_moves(enemies, en_passant_square, color);
+        self.remove_moves_that_leave_us_checked(&mut moves, enemies, en_passant_square, color);
         moves
     }
 
     fn count_moves(&self, enemies: &Pieces, color: Color, en_passant_square: Option<u8>) -> u32 {
-        let moves = self.get_moves(enemies, color, en_passant_square);
+        let moves = self.get_moves(enemies, en_passant_square, color);
         let num_moves: u32 = moves.iter().map(|dsts| dsts.count()).sum();
 
         let moves_from_promotion_squares = if color == Color::White {
@@ -489,8 +489,8 @@ impl Pieces {
         &self,
         moves: &mut [BitBoard; 64],
         enemies: &Pieces,
-        color: Color,
         en_passant_square: Option<u8>,
+        color: Color,
     ) {
         for (src, dsts) in moves.iter_mut().enumerate() {
             let dsts_copy = *dsts;
@@ -503,8 +503,8 @@ impl Pieces {
                     src as u8,
                     dst,
                     None,
-                    color,
                     &mut en_passant_copy,
+                    color,
                 );
                 if self_copy.is_checked_by(&enemies_copy, color.other()) {
                     dsts.clear_bit(dst);
@@ -893,8 +893,8 @@ impl Board {
                 src,
                 dst,
                 promotion,
-                self.turn,
                 &mut self.en_passant_square,
+                self.turn,
             ) {
                 return false;
             }
@@ -903,8 +903,8 @@ impl Board {
             src,
             dst,
             promotion,
-            self.turn,
             &mut self.en_passant_square,
+            self.turn,
         ) {
             return false;
         }
