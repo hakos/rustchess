@@ -634,12 +634,12 @@ impl Point {
         }
     }
 
-    fn to_index(&self) -> u8 {
+    fn to_index(self) -> u8 {
         assert!(self.inside_board());
         self.y as u8 * 8 + self.x as u8
     }
 
-    fn inside_board(&self) -> bool {
+    fn inside_board(self) -> bool {
         self.x >= 0 && self.x < 8 && self.y >= 0 && self.y < 8
     }
 }
@@ -771,17 +771,15 @@ impl Iterator for MoveIterator {
         self.dst = moves.first_bit();
         moves.clear_bit(self.dst);
 
-        if self.pawns.test_bit(self.src as u8) {
-            if is_promotion_rank(self.dst, self.color) {
-                // Initiate promotion iterator
-                self.promotion_iter = PROMOTIONS.iter();
-                let &promotion = self.promotion_iter.next().unwrap();
-                return Some(Move {
-                    src: self.src,
-                    dst: self.dst,
-                    promotion: Some(promotion),
-                });
-            }
+        if self.pawns.test_bit(self.src as u8) && is_promotion_rank(self.dst, self.color) {
+            // Initiate promotion iterator
+            self.promotion_iter = PROMOTIONS.iter();
+            let &promotion = self.promotion_iter.next().unwrap();
+            return Some(Move {
+                src: self.src,
+                dst: self.dst,
+                promotion: Some(promotion),
+            });
         }
 
         Some(Move {
