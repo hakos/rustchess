@@ -476,8 +476,7 @@ impl Pieces {
         moves
     }
 
-    fn count_moves(&self, enemies: &Pieces, color: Color, en_passant_square: Option<u8>) -> u32 {
-        let moves = self.get_moves(enemies, en_passant_square, color);
+    fn count_moves(&self, moves: &[BitBoard; 64], color: Color) -> u32 {
         let num_moves: u32 = moves.iter().map(|dsts| dsts.count()).sum();
 
         let moves_from_promotion_squares = if color == Color::White {
@@ -942,11 +941,15 @@ impl Board {
 
     fn count_moves(&self) -> u32 {
         if self.turn == Color::White {
-            self.white
-                .count_moves(&self.black, self.turn, self.en_passant_square)
+            let moves = self
+                .white
+                .get_moves(&self.black, self.en_passant_square, self.turn);
+            self.white.count_moves(&moves, self.turn)
         } else {
-            self.black
-                .count_moves(&self.white, self.turn, self.en_passant_square)
+            let moves = self
+                .black
+                .get_moves(&self.white, self.en_passant_square, self.turn);
+            self.black.count_moves(&moves, self.turn)
         }
     }
 
