@@ -170,6 +170,12 @@ fn is_black_king_side_castling(src: u8, dst: u8) -> bool {
 fn is_black_queen_side_castling(src: u8, dst: u8) -> bool {
     src == E8 && dst == C8
 }
+fn is_queen_side_rook_square(index: u8, color: Color) -> bool {
+    if color == Color::White { index == A1 } else { index == A8 }
+}
+fn is_king_side_rook_square(index: u8, color: Color) -> bool {
+    if color == Color::White { index == H1 } else { index == H8 }
+}
 
 impl Pieces {
     fn cleared() -> Pieces {
@@ -231,9 +237,9 @@ impl Pieces {
             apply_move(&mut self.bishops, src, dst, enemies);
         } else if self.rooks.test_bit(src) {
             apply_move(&mut self.rooks, src, dst, enemies);
-            if (color == Color::White && src == A1) || (color == Color::Black && src == A8) {
+            if is_queen_side_rook_square(src, color) {
                 self.can_queen_side_castle = false;
-            } else if (color == Color::White && src == H1) || (color == Color::Black && src == H8) {
+            } else if is_king_side_rook_square(src, color) {
                 self.can_king_side_castle = false;
             }
         } else if self.knights.test_bit(src) {
