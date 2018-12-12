@@ -194,8 +194,8 @@ impl Pieces {
             bishops: 0,
             queens: 0,
             king: 0,
-            can_king_side_castle: true,
-            can_queen_side_castle: true,
+            can_king_side_castle: false,
+            can_queen_side_castle: false,
         }
     }
 
@@ -723,10 +723,6 @@ impl Board {
         }
 
         if let Some(castling) = fen_parts.next() {
-            board.white.can_king_side_castle = false;
-            board.white.can_queen_side_castle = false;
-            board.black.can_king_side_castle = false;
-            board.black.can_queen_side_castle = false;
             for c in castling.chars() {
                 match c {
                     'K' => board.white.can_king_side_castle = true,
