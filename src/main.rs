@@ -214,9 +214,9 @@ impl Pieces {
         dst: u8,
         promotion: Option<Promotion>,
         color: Color,
-        en_passant_target_square: &mut Option<u8>
+        en_passant_square: &mut Option<u8>,
     ) -> bool {
-        let mut next_en_passant_target_square = None;
+        let mut next_en_passant_square = None;
 
         if self.pawns.test_bit(src) {
             if is_promotion_rank(dst, color) {
@@ -235,7 +235,7 @@ impl Pieces {
             }
             self.pawns.clear_bit(src);
             enemies.capture(dst);
-            if let Some(en_passant) = *en_passant_target_square {
+            if let Some(en_passant) = *en_passant_square {
                 if dst == en_passant {
                     if color == Color::White {
                         enemies.capture(dst + 8);
@@ -245,7 +245,7 @@ impl Pieces {
                 }
             };
             if abs_diff(src, dst) == 16 {
-                next_en_passant_target_square = Some((src + dst) / 2);
+                next_en_passant_square = Some((src + dst) / 2);
             }
         } else if self.bishops.test_bit(src) {
             apply_move(&mut self.bishops, src, dst, enemies);
@@ -269,7 +269,7 @@ impl Pieces {
             panic!("Unknown piece!");
         }
 
-        *en_passant_target_square = next_en_passant_target_square;
+        *en_passant_square = next_en_passant_square;
 
         true
     }
@@ -297,11 +297,11 @@ impl Pieces {
         dst: u8,
         promotion: Option<Promotion>,
         color: Color,
-        en_passant_target_square: &mut Option<u8>,
+        en_passant_square: &mut Option<u8>,
     ) -> bool {
-        let allowed_moves = self.get_moves(enemies, color, *en_passant_target_square)[src as usize];
+        let allowed_moves = self.get_moves(enemies, color, *en_passant_square)[src as usize];
         if allowed_moves.test_bit(dst) {
-            self.apply_move_impl(enemies, src, dst, promotion, color, en_passant_target_square)
+            self.apply_move_impl(enemies, src, dst, promotion, color, en_passant_square)
         } else {
             false
         }
@@ -406,17 +406,19 @@ impl Pieces {
         moves
     }
 
-    fn get_pseudo_legal_moves(&self, enemies: &Pieces, color: Color, en_passant_target_square: Option<u8>) -> [BitBoard; 64] {
+    fn get_pseudo_legal_moves(
+        &self,
+        enemies: &Pieces,
+        color: Color,
+        en_passant_square: Option<u8>,
+    ) -> [BitBoard; 64] {
         let mut moves: [BitBoard; 64] = [0; 64];
 
         self.pawns.for_each_bit(|src| {
             moves[src as usize] = if color == Color::White {
-                self.get_white_pawn_moves(src, enemies, en_passant_target_square)
+                self.get_white_pawn_moves(src, enemies, en_passant_square)
             } else {
-                let m = self.get_black_pawn_moves(src, enemies, en_passant_target_square);
-                println!("Pawn moves from {}", index_to_str(src));
-                print_bits(m);
-                m
+                self.get_black_pawn_moves(src, enemies, en_passant_square)
             };
         });
 
@@ -454,14 +456,19 @@ impl Pieces {
         moves
     }
 
-    fn get_moves(&self, enemies: &Pieces, color: Color, en_passant_target_square: Option<u8>) -> [BitBoard; 64] {
-        let mut moves = self.get_pseudo_legal_moves(enemies, color, en_passant_target_square);
-        self.remove_moves_that_leave_us_checked(&mut moves, enemies, color, en_passant_target_square);
+    fn get_moves(
+        &self,
+        enemies: &Pieces,
+        color: Color,
+        en_passant_square: Option<u8>,
+    ) -> [BitBoard; 64] {
+        let mut moves = self.get_pseudo_legal_moves(enemies, color, en_passant_square);
+        self.remove_moves_that_leave_us_checked(&mut moves, enemies, color, en_passant_square);
         moves
     }
 
-    fn count_moves(&self, enemies: &Pieces, color: Color, en_passant_target_square: Option<u8>) -> u32 {
-        let moves = self.get_moves(enemies, color, en_passant_target_square);
+    fn count_moves(&self, enemies: &Pieces, color: Color, en_passant_square: Option<u8>) -> u32 {
+        let moves = self.get_moves(enemies, color, en_passant_square);
         let num_moves: u32 = moves.iter().map(|dsts| dsts.count()).sum();
 
         let moves_from_promotion_squares = if color == Color::White {
@@ -483,15 +490,22 @@ impl Pieces {
         moves: &mut [BitBoard; 64],
         enemies: &Pieces,
         color: Color,
-        en_passant_target_square: Option<u8>,
+        en_passant_square: Option<u8>,
     ) {
         for (src, dsts) in moves.iter_mut().enumerate() {
             let dsts_copy = *dsts;
             dsts_copy.for_each_bit(|dst| {
                 let mut enemies_copy = *enemies;
                 let mut self_copy = *self;
-                let mut en_passant_copy = en_passant_target_square;
-                self_copy.apply_move_impl(&mut enemies_copy, src as u8, dst, None, color, &mut en_passant_copy);
+                let mut en_passant_copy = en_passant_square;
+                self_copy.apply_move_impl(
+                    &mut enemies_copy,
+                    src as u8,
+                    dst,
+                    None,
+                    color,
+                    &mut en_passant_copy,
+                );
                 if self_copy.is_checked_by(&enemies_copy, color.other()) {
                     dsts.clear_bit(dst);
                 }
@@ -499,13 +513,18 @@ impl Pieces {
         }
     }
 
-    fn get_white_pawn_moves(&self, src: u8, enemies: &Pieces, en_passant_target_square: Option<u8>) -> BitBoard {
+    fn get_white_pawn_moves(
+        &self,
+        src: u8,
+        enemies: &Pieces,
+        en_passant_square: Option<u8>,
+    ) -> BitBoard {
         const RANK_4: u64 = 0x00_00_00_ff_00_00_00_00;
         let empty = self.empty() & enemies.empty();
         let single_push = shift_north(bitmask(src)) & empty;
         let double_push = shift_north(single_push) & empty & RANK_4;
         let mut enemy_squares = enemies.occupancy();
-        if let Some(en_passant) = en_passant_target_square {
+        if let Some(en_passant) = en_passant_square {
             enemy_squares.set_bit(en_passant);
         }
         let captures =
@@ -514,13 +533,18 @@ impl Pieces {
         single_push | double_push | captures
     }
 
-    fn get_black_pawn_moves(&self, src: u8, enemies: &Pieces, en_passant_target_square: Option<u8>) -> BitBoard {
+    fn get_black_pawn_moves(
+        &self,
+        src: u8,
+        enemies: &Pieces,
+        en_passant_square: Option<u8>,
+    ) -> BitBoard {
         const RANK_5: u64 = 0x00_00_00_00_ff_00_00_00;
         let empty = self.empty() & enemies.empty();
         let single_push = shift_south(bitmask(src)) & empty;
         let double_push = shift_south(single_push) & empty & RANK_5;
         let mut enemy_squares = enemies.occupancy();
-        if let Some(en_passant) = en_passant_target_square {
+        if let Some(en_passant) = en_passant_square {
             enemy_squares.set_bit(en_passant);
         }
         let captures =
@@ -582,7 +606,7 @@ struct Board {
     white: Pieces,
     black: Pieces,
     turn: Color,
-    en_passant_target_square: Option<u8>,
+    en_passant_square: Option<u8>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -691,7 +715,7 @@ impl Board {
                 can_queen_side_castle: true,
             },
             turn: Color::White,
-            en_passant_target_square: None,
+            en_passant_square: None,
         }
     }
 
@@ -700,7 +724,7 @@ impl Board {
             white: Pieces::cleared(),
             black: Pieces::cleared(),
             turn: Color::White,
-            en_passant_target_square: None,
+            en_passant_square: None,
         }
     }
 
@@ -761,9 +785,12 @@ impl Board {
         }
 
         if let Some(en_passant) = fen_parts.next() {
-            board.en_passant_target_square = str_to_index(en_passant);
-            if board.en_passant_target_square.is_none() {
-                panic!("Unknown en passant target square '{}' in FEN string", en_passant);
+            board.en_passant_square = str_to_index(en_passant);
+            if board.en_passant_square.is_none() {
+                panic!(
+                    "Unknown en passant target square '{}' in FEN string",
+                    en_passant
+                );
             }
         }
 
@@ -801,7 +828,7 @@ impl Board {
             castling.push('-');
         }
 
-        let en_passant = match self.en_passant_target_square {
+        let en_passant = match self.en_passant_square {
             Some(square) => index_to_str(square),
             None => String::from("-"),
         };
@@ -861,16 +888,24 @@ impl Board {
         let self_before_move = *self;
 
         if self.turn == Color::White {
-            if !self
-                .white
-                .make_move(&mut self.black, src, dst, promotion, self.turn, &mut self.en_passant_target_square)
-            {
+            if !self.white.make_move(
+                &mut self.black,
+                src,
+                dst,
+                promotion,
+                self.turn,
+                &mut self.en_passant_square,
+            ) {
                 return false;
             }
-        } else if !self
-            .black
-            .make_move(&mut self.white, src, dst, promotion, self.turn, &mut self.en_passant_target_square)
-        {
+        } else if !self.black.make_move(
+            &mut self.white,
+            src,
+            dst,
+            promotion,
+            self.turn,
+            &mut self.en_passant_square,
+        ) {
             return false;
         }
 
@@ -898,9 +933,11 @@ impl Board {
 
     fn count_moves(&self) -> u32 {
         if self.turn == Color::White {
-            self.white.count_moves(&self.black, self.turn, self.en_passant_target_square)
+            self.white
+                .count_moves(&self.black, self.turn, self.en_passant_square)
         } else {
-            self.black.count_moves(&self.white, self.turn, self.en_passant_target_square)
+            self.black
+                .count_moves(&self.white, self.turn, self.en_passant_square)
         }
     }
 
@@ -1045,11 +1082,20 @@ mod tests {
     fn opening_moves_fen() {
         let mut board = Board::initial_position();
         assert!(board.make_move("e2e4"));
-        assert_eq!("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3", board.as_fen());
+        assert_eq!(
+            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3",
+            board.as_fen()
+        );
         assert!(board.make_move("c7c5"));
-        assert_eq!("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6", board.as_fen());
+        assert_eq!(
+            "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6",
+            board.as_fen()
+        );
         assert!(board.make_move("g1f3"));
-        assert_eq!("rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -", board.as_fen());
+        assert_eq!(
+            "rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -",
+            board.as_fen()
+        );
     }
 
     #[test]
@@ -1430,9 +1476,13 @@ mod tests {
 
     #[test]
     fn white_en_passant() {
-        let mut board = Board::from_fen("rnbqkb1r/pp1ppppp/5n2/2pP4/8/8/PPP1PPPP/RNBQKBNR w KQkq c6");
+        let mut board =
+            Board::from_fen("rnbqkb1r/pp1ppppp/5n2/2pP4/8/8/PPP1PPPP/RNBQKBNR w KQkq c6");
         assert!(board.make_move("d5c6"));
-        assert_eq!("rnbqkb1r/pp1ppppp/2P2n2/8/8/8/PPP1PPPP/RNBQKBNR b KQkq -", board.as_fen())
+        assert_eq!(
+            "rnbqkb1r/pp1ppppp/2P2n2/8/8/8/PPP1PPPP/RNBQKBNR b KQkq -",
+            board.as_fen()
+        )
     }
 
     #[test]
