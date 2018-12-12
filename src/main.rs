@@ -248,9 +248,10 @@ impl Pieces {
             }
 
             self.pawns.clear_bit(src);
-            enemies.capture(dst);
-            if en_passant_square.is_some() && en_passant_square.unwrap() == dst {
+            if en_passant_square.is_some() && dst == en_passant_square.unwrap() {
                 enemies.capture(get_en_passant_capture_square(dst, color));
+            } else {
+                enemies.capture(dst);
             }
             if is_two_rank_move(src, dst) {
                 next_en_passant_square = Some(get_en_passant_square(src, dst));
