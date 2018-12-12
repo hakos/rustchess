@@ -302,15 +302,13 @@ impl Pieces {
     fn make_move(
         &mut self,
         enemies: &mut Pieces,
-        src: u8,
-        dst: u8,
-        promotion: Option<Promotion>,
+        m: Move,
         en_passant_square: &mut Option<u8>,
         color: Color,
     ) -> bool {
-        let allowed_moves = self.get_moves(enemies, *en_passant_square, color)[src as usize];
-        if allowed_moves.test_bit(dst) {
-            self.apply_move_impl(enemies, src, dst, promotion, en_passant_square, color)
+        let allowed_moves = self.get_moves(enemies, *en_passant_square, color)[m.src as usize];
+        if allowed_moves.test_bit(m.dst) {
+            self.apply_move_impl(enemies, m.src, m.dst, m.promotion, en_passant_square, color)
         } else {
             false
         }
@@ -696,6 +694,98 @@ fn apply_move(pieces: &mut BitBoard, src: u8, dst: u8, enemies: &mut Pieces) {
     enemies.capture(dst);
 }
 
+struct Move {
+    src: u8,
+    dst: u8,
+    promotion: Option<Promotion>,
+}
+
+use std::fmt;
+
+impl fmt::Display for Move {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}{}{}",
+            index_to_str(self.src),
+            index_to_str(self.dst),
+            match self.promotion {
+                Some(Promotion::Queen) => "q",
+                Some(Promotion::Bishop) => "b",
+                Some(Promotion::Rook) => "r",
+                Some(Promotion::Knight) => "k",
+                None => "",
+            }
+        )
+    }
+}
+
+struct MoveIterator {
+    moves: [BitBoard; 64],
+    pawns: BitBoard,
+    src: u8,
+    dst: u8,
+    color: Color,
+    promotion_iter: std::slice::Iter<'static, Promotion>,
+}
+
+const PROMOTIONS: [Promotion; 4] = [
+    Promotion::Queen,
+    Promotion::Rook,
+    Promotion::Knight,
+    Promotion::Bishop,
+];
+
+const EMPTY_PROMOTIONS: [Promotion; 0] = [];
+
+impl Iterator for MoveIterator {
+    type Item = Move;
+
+    fn next(&mut self) -> Option<Move> {
+        if let Some(&promotion) = self.promotion_iter.next() {
+            return Some(Move {
+                src: self.src,
+                dst: self.dst,
+                promotion: Some(promotion),
+            });
+        }
+
+        // Scan to next source square with moves
+        while self.src < self.moves.len() as u8 && self.moves[self.src as usize] == 0 {
+            self.src += 1
+        }
+
+        if self.src == self.moves.len() as u8 {
+            // No more moves
+            return None;
+        }
+
+        // Consume next destination from this source
+        let moves = &mut self.moves[self.src as usize];
+        self.dst = moves.first_bit();
+        moves.clear_bit(self.dst);
+
+        if self.pawns.test_bit(self.src as u8) {
+            if is_promotion_rank(self.dst, self.color) {
+                // Initiate promotion iterator
+                self.promotion_iter = PROMOTIONS.iter();
+                let &promotion = self.promotion_iter.next().unwrap();
+                return Some(Move {
+                    src: self.src,
+                    dst: self.dst,
+                    promotion: Some(promotion),
+                });
+            }
+        }
+
+        Some(Move {
+            src: self.src,
+            dst: self.dst,
+            promotion: None,
+        })
+    }
+}
+
 impl Board {
     fn initial_position() -> Board {
         #[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
@@ -792,14 +882,18 @@ impl Board {
             }
         }
 
-        if let Some(en_passant) = fen_parts.next() {
-            board.en_passant_square = str_to_index(en_passant);
-            if board.en_passant_square.is_none() {
-                panic!(
-                    "Unknown en passant target square '{}' in FEN string",
-                    en_passant
-                );
+        match fen_parts.next() {
+            Some("-") => (),
+            Some(en_passant) => {
+                board.en_passant_square = str_to_index(en_passant);
+                if board.en_passant_square.is_none() {
+                    panic!(
+                        "Unknown en passant target square '{}' in FEN string",
+                        en_passant
+                    );
+                }
             }
+            None => (),
         }
 
         board
@@ -892,28 +986,28 @@ impl Board {
             None
         };
 
+        self.make_move_impl(Move {
+            src,
+            dst,
+            promotion,
+        })
+    }
+
+    fn make_move_impl(&mut self, m: Move) -> bool {
         // Copy to be able to restore if move ends up in check
         let self_before_move = *self;
 
         if self.turn == Color::White {
-            if !self.white.make_move(
-                &mut self.black,
-                src,
-                dst,
-                promotion,
-                &mut self.en_passant_square,
-                self.turn,
-            ) {
+            if !self
+                .white
+                .make_move(&mut self.black, m, &mut self.en_passant_square, self.turn)
+            {
                 return false;
             }
-        } else if !self.black.make_move(
-            &mut self.white,
-            src,
-            dst,
-            promotion,
-            &mut self.en_passant_square,
-            self.turn,
-        ) {
+        } else if !self
+            .black
+            .make_move(&mut self.white, m, &mut self.en_passant_square, self.turn)
+        {
             return false;
         }
 
@@ -939,17 +1033,21 @@ impl Board {
         }
     }
 
+    fn get_moves(&self) -> [BitBoard; 64] {
+        if self.turn == Color::White {
+            self.white
+                .get_moves(&self.black, self.en_passant_square, self.turn)
+        } else {
+            self.black
+                .get_moves(&self.white, self.en_passant_square, self.turn)
+        }
+    }
+
     fn count_moves(&self) -> u32 {
         if self.turn == Color::White {
-            let moves = self
-                .white
-                .get_moves(&self.black, self.en_passant_square, self.turn);
-            self.white.count_moves(&moves, self.turn)
+            self.white.count_moves(&self.get_moves(), self.turn)
         } else {
-            let moves = self
-                .black
-                .get_moves(&self.white, self.en_passant_square, self.turn);
-            self.black.count_moves(&moves, self.turn)
+            self.black.count_moves(&self.get_moves(), self.turn)
         }
     }
 
@@ -963,6 +1061,37 @@ impl Board {
 
     fn is_check_mated(&self) -> bool {
         self.is_checked() && self.count_moves() == 0
+    }
+
+    fn move_iter(&self) -> MoveIterator {
+        MoveIterator {
+            moves: self.get_moves(),
+            pawns: if self.turn == Color::White {
+                self.white.pawns
+            } else {
+                self.black.pawns
+            },
+            src: 0,
+            dst: 0,
+            promotion_iter: EMPTY_PROMOTIONS.iter(),
+            color: self.turn,
+        }
+    }
+
+    fn perft(&self, depth: u32) -> u64 {
+        let mut num_nodes = 0;
+
+        if depth == 0 {
+            return 1;
+        };
+
+        for m in self.move_iter() {
+            let mut self_copy = *self;
+            assert!(self_copy.make_move_impl(m));
+            num_nodes += self_copy.perft(depth - 1);
+        }
+
+        num_nodes
     }
 }
 
@@ -1300,6 +1429,7 @@ mod tests {
         let board = Board::initial_position();
         let num_opening_moves = board.count_moves();
         assert_eq!(20, num_opening_moves);
+        assert_eq!(20, board.move_iter().count());
     }
 
     #[test]
@@ -1355,45 +1485,62 @@ mod tests {
     // https://gist.github.com/peterellisjones/8c46c28141c162d1d8a0f0badbc9cff9
 
     #[test]
-    fn peft_test_position_1() {
+    fn perft_test_position_1() {
         let board = Board::from_fen("r6r/1b2k1bq/8/8/7B/8/8/R3K2R b QK");
         assert_eq!(8, board.count_moves());
+        assert_eq!(8, board.perft(1));
     }
 
     #[test]
-    fn peft_test_position_2() {
+    fn perft_test_position_2() {
         let board = Board::from_fen("8/8/8/2k5/2pP4/8/B7/4K3 b - d3");
         assert_eq!(8, board.count_moves());
+        assert_eq!(8, board.perft(1));
     }
 
     #[test]
-    fn peft_test_position_3() {
+    fn perft_test_position_3() {
         let board = Board::from_fen("r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR w QqKk");
         assert_eq!(19, board.count_moves());
+        assert_eq!(19, board.perft(1));
     }
 
     #[test]
     fn peft_test_position_4() {
         let board = Board::from_fen("r3k2r/p1pp1pb1/bn2Qnp1/2qPN3/1p2P3/2N5/PPPBBPPP/R3K2R b QqKk");
         assert_eq!(5, board.count_moves());
+        assert_eq!(5, board.perft(1));
     }
 
     #[test]
     fn peft_test_position_5() {
         let board = Board::from_fen("2kr3r/p1ppqpb1/bn2Qnp1/3PN3/1p2P3/2N5/PPPBBPPP/R3K2R b QK");
         assert_eq!(44, board.count_moves());
+        assert_eq!(44, board.perft(1));
     }
 
     #[test]
     fn peft_test_position_6() {
         let board = Board::from_fen("rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R w QK");
         assert_eq!(39, board.count_moves());
+        assert_eq!(39, board.perft(1));
     }
 
     #[test]
     fn peft_test_position_7() {
         let board = Board::from_fen("2r5/3pk3/8/2P5/8/2K5/8/8 w -");
         assert_eq!(9, board.count_moves());
+        assert_eq!(9, board.perft(1));
+    }
+
+    #[test]
+    fn perft_initial_position() {
+        let board = Board::initial_position();
+        assert_eq!(1, board.perft(0));
+        assert_eq!(20, board.perft(1));
+        assert_eq!(400, board.perft(2));
+        assert_eq!(8902, board.perft(3));
+        //assert_eq!(197281, board.perft(4));
     }
 
     #[test]
@@ -1470,6 +1617,7 @@ mod tests {
         // https://www.chessprogramming.org/Encoding_Moves
         let board = Board::from_fen("R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1");
         assert_eq!(218, board.count_moves());
+        assert_eq!(218, board.move_iter().count());
     }
 
     #[test]
@@ -1477,6 +1625,7 @@ mod tests {
         // https://www.chessprogramming.org/Encoding_Moves
         let board = Board::from_fen("3Q4/1Q4Q1/4Q3/2Q4R/Q4Q2/3Q4/1Q4Rp/1K1BBNNk");
         assert_eq!(218, board.count_moves());
+        assert_eq!(218, board.move_iter().count());
     }
 
     #[test]
