@@ -241,10 +241,7 @@ impl Pieces {
                     None => return false,
                 }
             } else {
-                match promotion {
-                    Some(_) => return false,
-                    None => self.pawns.set_bit(dst),
-                }
+                self.pawns.set_bit(dst);
             }
 
             self.pawns.clear_bit(src);
@@ -276,6 +273,13 @@ impl Pieces {
             self.can_queen_side_castle = false;
         } else {
             panic!("Unknown piece!");
+        }
+
+        // Capturing rook loses castling rights
+        if is_queen_side_rook_square(dst, color.other()) {
+            enemies.can_queen_side_castle = false;
+        } else if is_king_side_rook_square(dst, color.other()) {
+            enemies.can_king_side_castle = false;
         }
 
         *en_passant_square = next_en_passant_square;
@@ -504,14 +508,15 @@ impl Pieces {
                 let mut enemies_copy = *enemies;
                 let mut self_copy = *self;
                 let mut en_passant_copy = en_passant_square;
-                self_copy.apply_move_impl(
+                assert!(self_copy.apply_move_impl(
                     &mut enemies_copy,
                     src as u8,
                     dst,
-                    None,
+                    // Arbitrary choice for check checking if this is a promotion move:
+                    Some(Promotion::Queen),
                     &mut en_passant_copy,
                     color,
-                );
+                ));
                 if self_copy.is_checked_by(&enemies_copy, color.other()) {
                     dsts.clear_bit(dst);
                 }
@@ -694,6 +699,7 @@ fn apply_move(pieces: &mut BitBoard, src: u8, dst: u8, enemies: &mut Pieces) {
     enemies.capture(dst);
 }
 
+#[derive(Copy, Clone)]
 struct Move {
     src: u8,
     dst: u8,
@@ -1078,7 +1084,7 @@ impl Board {
         }
     }
 
-    fn perft(&self, depth: u32) -> u64 {
+    fn perft(&self, depth: u32, debug: bool) -> u64 {
         let mut num_nodes = 0;
 
         if depth == 0 {
@@ -1088,7 +1094,11 @@ impl Board {
         for m in self.move_iter() {
             let mut self_copy = *self;
             assert!(self_copy.make_move_impl(m));
-            num_nodes += self_copy.perft(depth - 1);
+            let num_children = self_copy.perft(depth - 1, false);
+            num_nodes += num_children;
+            if debug {
+                println!("{}: {}", m, num_children);
+            }
         }
 
         num_nodes
@@ -1488,59 +1498,105 @@ mod tests {
     fn perft_test_position_1() {
         let board = Board::from_fen("r6r/1b2k1bq/8/8/7B/8/8/R3K2R b QK");
         assert_eq!(8, board.count_moves());
-        assert_eq!(8, board.perft(1));
+        assert_eq!(8, board.perft(1, false));
     }
 
     #[test]
     fn perft_test_position_2() {
         let board = Board::from_fen("8/8/8/2k5/2pP4/8/B7/4K3 b - d3");
         assert_eq!(8, board.count_moves());
-        assert_eq!(8, board.perft(1));
+        assert_eq!(8, board.perft(1, false));
     }
 
     #[test]
     fn perft_test_position_3() {
         let board = Board::from_fen("r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR w QqKk");
         assert_eq!(19, board.count_moves());
-        assert_eq!(19, board.perft(1));
+        assert_eq!(19, board.perft(1, false));
     }
 
     #[test]
     fn peft_test_position_4() {
         let board = Board::from_fen("r3k2r/p1pp1pb1/bn2Qnp1/2qPN3/1p2P3/2N5/PPPBBPPP/R3K2R b QqKk");
         assert_eq!(5, board.count_moves());
-        assert_eq!(5, board.perft(1));
+        assert_eq!(5, board.perft(1, false));
     }
 
     #[test]
     fn peft_test_position_5() {
         let board = Board::from_fen("2kr3r/p1ppqpb1/bn2Qnp1/3PN3/1p2P3/2N5/PPPBBPPP/R3K2R b QK");
         assert_eq!(44, board.count_moves());
-        assert_eq!(44, board.perft(1));
+        assert_eq!(44, board.perft(1, false));
     }
 
     #[test]
     fn peft_test_position_6() {
         let board = Board::from_fen("rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R w QK");
         assert_eq!(39, board.count_moves());
-        assert_eq!(39, board.perft(1));
+        assert_eq!(39, board.perft(1, false));
     }
 
     #[test]
     fn peft_test_position_7() {
         let board = Board::from_fen("2r5/3pk3/8/2P5/8/2K5/8/8 w -");
         assert_eq!(9, board.count_moves());
-        assert_eq!(9, board.perft(1));
+        assert_eq!(9, board.perft(1, false));
+    }
+
+    #[test]
+    #[ignore]
+    fn perft_test_position_8() {
+        let board = Board::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ -");
+        assert_eq!(62379, board.perft(3, true));
+    }
+
+    #[test]
+    #[ignore]
+    fn perft_test_position_9() {
+        let board = Board::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ -");
+        assert_eq!(62379, board.perft(3, true));
+    }
+
+    #[test]
+    #[ignore]
+    fn perft_test_position_10() {
+        let board = Board::from_fen("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - -");
+        assert_eq!(89890, board.perft(3, true));
+    }
+
+    #[test]
+    fn perft_test_position_11() {
+        let board = Board::from_fen("K1k5/8/P7/8/8/8/8/8 w - -");
+        assert_eq!(2217, board.perft(6, true));
+    }
+
+    #[test]
+    fn perft_test_position_12() {
+        let board = Board::from_fen("8/8/2k5/5q2/5n2/8/5K2/8 b - -");
+        assert_eq!(23527, board.perft(4, true));
     }
 
     #[test]
     fn perft_initial_position() {
         let board = Board::initial_position();
-        assert_eq!(1, board.perft(0));
-        assert_eq!(20, board.perft(1));
-        assert_eq!(400, board.perft(2));
-        assert_eq!(8902, board.perft(3));
+        assert_eq!(1, board.perft(0, false));
+        assert_eq!(20, board.perft(1, false));
+        assert_eq!(400, board.perft(2, false));
+        assert_eq!(8902, board.perft(3, false));
         //assert_eq!(197281, board.perft(4));
+    }
+
+    #[test]
+    fn capture_rook_loses_castling_rights() {
+        let mut board = Board::from_fen("r3k2r/Rb4bq/8/8/8/8/7B/4K2R b Kkq - 1 1");
+        board.make_move("b7h1");
+        assert!(!board.white.can_king_side_castle);
+    }
+
+    #[test]
+    fn reavealing_own_king_in_check_by_promoting_pawn_not_allowed() {
+        let board = Board::from_fen("r1bq1k1r/pp1Pbppp/n1p5/8/2B5/8/PPPKNnPP/RNBQ3R w - -");
+        assert_eq!(32, board.move_iter().count());
     }
 
     #[test]
