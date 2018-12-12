@@ -347,52 +347,53 @@ impl Pieces {
         all_safe
     }
 
-    fn get_castling_moves(&self, enemies: &Pieces, color: Color) -> BitBoard {
+    fn get_white_castling_moves(&self, enemies: &Pieces) -> BitBoard {
         let mut moves: BitBoard = 0;
-        if color == Color::White {
-            if self.can_king_side_castle
-                && self.castling_squares_ok(
-                    enemies,
-                    color,
-                    WHITE_KING_SIDE_CASTLING_EMPTY_SQUARES,
-                    WHITE_KING_SIDE_CASTLING_SAFE_SQUARES,
-                )
-            {
-                moves.set_bit(G1);
-            }
-            if self.can_queen_side_castle
-                && self.castling_squares_ok(
-                    enemies,
-                    color,
-                    WHITE_QUEEN_SIDE_CASTLING_EMPTY_SQUARES,
-                    WHITE_QUEEN_SIDE_CASTLING_SAFE_SQUARES,
-                )
-            {
-                moves.set_bit(C1);
-            }
-        } else {
-            if self.can_king_side_castle
-                && self.castling_squares_ok(
-                    enemies,
-                    color,
-                    BLACK_KING_SIDE_CASTLING_EMPTY_SQUARES,
-                    BLACK_KING_SIDE_CASTLING_SAFE_SQUARES,
-                )
-            {
-                moves.set_bit(G8);
-            }
-            if self.can_queen_side_castle
-                && self.castling_squares_ok(
-                    enemies,
-                    color,
-                    BLACK_QUEEN_SIDE_CASTLING_EMPTY_SQUARES,
-                    BLACK_QUEEN_SIDE_CASTLING_SAFE_SQUARES,
-                )
-            {
-                moves.set_bit(C8);
-            }
+        if self.can_king_side_castle
+            && self.castling_squares_ok(
+                enemies,
+                Color::White,
+                WHITE_KING_SIDE_CASTLING_EMPTY_SQUARES,
+                WHITE_KING_SIDE_CASTLING_SAFE_SQUARES,
+            )
+        {
+            moves.set_bit(G1);
         }
+        if self.can_queen_side_castle
+            && self.castling_squares_ok(
+                enemies,
+                Color::White,
+                WHITE_QUEEN_SIDE_CASTLING_EMPTY_SQUARES,
+                WHITE_QUEEN_SIDE_CASTLING_SAFE_SQUARES,
+            )
+        {
+            moves.set_bit(C1);
+        }
+        moves
+    }
 
+    fn get_black_castling_moves(&self, enemies: &Pieces) -> BitBoard {
+        let mut moves: BitBoard = 0;
+        if self.can_king_side_castle
+            && self.castling_squares_ok(
+                enemies,
+                Color::Black,
+                BLACK_KING_SIDE_CASTLING_EMPTY_SQUARES,
+                BLACK_KING_SIDE_CASTLING_SAFE_SQUARES,
+            )
+        {
+            moves.set_bit(G8);
+        }
+        if self.can_queen_side_castle
+            && self.castling_squares_ok(
+                enemies,
+                Color::Black,
+                BLACK_QUEEN_SIDE_CASTLING_EMPTY_SQUARES,
+                BLACK_QUEEN_SIDE_CASTLING_SAFE_SQUARES,
+            )
+        {
+            moves.set_bit(C8);
+        }
         moves
     }
 
@@ -431,7 +432,11 @@ impl Pieces {
         let king_index = self.king.first_bit();
         let king_moves =
             self.get_moves_from_square(king_index, &KING_QUEEN_MOVES, enemies, Movement::Stepping);
-        let castling_moves = self.get_castling_moves(enemies, color);
+        let castling_moves = if color == Color::White {
+            self.get_white_castling_moves(enemies)
+        } else {
+            self.get_black_castling_moves(enemies)
+        };
         moves[king_index as usize] = king_moves | castling_moves;
 
         moves
