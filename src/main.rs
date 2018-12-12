@@ -329,8 +329,8 @@ impl Pieces {
         let friendly_pieces = self.occupancy();
         let enemy_pieces = enemies.occupancy();
         let mut moves: BitBoard = 0;
-        for direction in directions {
-            let mut dst = &src + direction;
+        for &direction in directions {
+            let mut dst = src + direction;
             while dst.inside_board() && !friendly_pieces.test_bit(dst.to_index()) {
                 let dst_index = dst.to_index();
                 moves.set_bit(dst_index);
@@ -339,7 +339,7 @@ impl Pieces {
                     // Stop tracing this direction
                     break;
                 }
-                dst = &dst + direction;
+                dst = dst + direction;
             }
         }
         moves
@@ -620,7 +620,7 @@ struct Board {
     en_passant_square: Option<u8>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 struct Point {
     x: i8,
     y: i8,
@@ -646,10 +646,10 @@ impl Point {
 
 use std::ops::Add;
 
-impl Add for &Point {
+impl Add for Point {
     type Output = Point;
 
-    fn add(self, other: &Point) -> Point {
+    fn add(self, other: Point) -> Point {
         Point {
             x: self.x + other.x,
             y: self.y + other.y,
