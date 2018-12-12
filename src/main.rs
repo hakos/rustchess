@@ -544,6 +544,7 @@ struct Board {
     white: Pieces,
     black: Pieces,
     turn: Color,
+    en_passant_target_square: Option<u8>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -652,6 +653,7 @@ impl Board {
                 can_queen_side_castle: true,
             },
             turn: Color::White,
+            en_passant_target_square: None,
         }
     }
 
@@ -660,6 +662,7 @@ impl Board {
             white: Pieces::cleared(),
             black: Pieces::cleared(),
             turn: Color::White,
+            en_passant_target_square: None,
         }
     }
 
@@ -719,6 +722,13 @@ impl Board {
             }
         }
 
+        if let Some(en_passant) = fen_parts.next() {
+            board.en_passant_target_square = str_to_index(en_passant);
+            if board.en_passant_target_square.is_none() {
+                panic!("Unknown en passant target square '{}' in FEN string", en_passant);
+            }
+        }
+
         board
     }
 
@@ -753,7 +763,12 @@ impl Board {
             castling.push('-');
         }
 
-        format!("{} {} {}", position, turn, castling)
+        let en_passant = match self.en_passant_target_square {
+            Some(square) => index_to_str(square),
+            None => String::from("-"),
+        };
+
+        format!("{} {} {} {}", position, turn, castling, en_passant)
     }
 
     fn as_unicode(&self) -> [char; 64] {
@@ -891,6 +906,12 @@ fn str_to_index(s: &str) -> Option<u8> {
     Some(63 - 8 * rank - (7 - file))
 }
 
+fn index_to_str(index: u8) -> String {
+    let point = Point::from_index(index);
+    assert!(point.inside_board());
+    format!("{}{}", char::from('a' as u8 + point.x as u8), 8 - point.y)
+}
+
 fn add_piece_symbols(chars: &mut [char; 64], pieces: BitBoard, symbol: char) {
     (0..64)
         .filter(|index| pieces.test_bit(*index as u8))
@@ -946,7 +967,7 @@ mod tests {
     #[test]
     fn initial_board_fen() {
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq",
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -",
             Board::initial_position().as_fen()
         );
     }
@@ -954,8 +975,8 @@ mod tests {
     #[test]
     fn parse_fen() {
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b Kk",
-            Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b Kk").as_fen(),
+            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3",
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3").as_fen(),
         );
     }
 
@@ -976,7 +997,7 @@ mod tests {
         assert!(board.make_move("e7e5"));
         assert!(!board.make_move("e4e5")); // occupied
         assert_eq!(
-            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq",
+            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -",
             board.as_fen()
         );
     }
@@ -998,7 +1019,7 @@ mod tests {
         board.turn = Color::White;
         assert!(board.make_move("c1d2"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/3P4/8/PPPBPPPP/RN1QKBNR b KQkq",
+            "rnbqkbnr/pppppppp/8/8/3P4/8/PPPBPPPP/RN1QKBNR b KQkq -",
             board.as_fen()
         );
     }
@@ -1012,7 +1033,7 @@ mod tests {
         board.turn = Color::White;
         assert!(board.make_move("a1a2"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/P7/8/RPPPPPPP/1NBQKBNR b Kkq",
+            "rnbqkbnr/pppppppp/8/8/P7/8/RPPPPPPP/1NBQKBNR b Kkq -",
             board.as_fen()
         );
     }
@@ -1022,7 +1043,7 @@ mod tests {
         let mut board = Board::initial_position();
         assert!(board.make_move("b1c3"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/8/2N5/PPPPPPPP/R1BQKBNR b KQkq",
+            "rnbqkbnr/pppppppp/8/8/8/2N5/PPPPPPPP/R1BQKBNR b KQkq -",
             board.as_fen()
         );
         assert_eq!(Color::Black, board.turn);
@@ -1037,7 +1058,7 @@ mod tests {
         assert!(!board.make_move("e1e3")); // too far
         assert!(board.make_move("e1e2"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPPKPPP/RNBQ1BNR b kq",
+            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPPKPPP/RNBQ1BNR b kq -",
             board.as_fen()
         );
     }
@@ -1049,7 +1070,7 @@ mod tests {
         board.turn = Color::White;
         assert!(board.make_move("d1d3"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/3P4/3Q4/PPP1PPPP/RNB1KBNR b KQkq",
+            "rnbqkbnr/pppppppp/8/8/3P4/3Q4/PPP1PPPP/RNB1KBNR b KQkq -",
             board.as_fen()
         );
     }
@@ -1194,42 +1215,42 @@ mod tests {
     fn promotion_to_queen() {
         let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(board.make_move("h7h8q"));
-        assert_eq!("K6Q/8/8/8/8/8/8/k7 b -", board.as_fen());
+        assert_eq!("K6Q/8/8/8/8/8/8/k7 b - -", board.as_fen());
     }
 
     #[test]
     fn promotion_to_bishop() {
         let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(board.make_move("h7h8b"));
-        assert_eq!("K6B/8/8/8/8/8/8/k7 b -", board.as_fen());
+        assert_eq!("K6B/8/8/8/8/8/8/k7 b - -", board.as_fen());
     }
 
     #[test]
     fn promotion_to_knight() {
         let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(board.make_move("h7h8n"));
-        assert_eq!("K6N/8/8/8/8/8/8/k7 b -", board.as_fen());
+        assert_eq!("K6N/8/8/8/8/8/8/k7 b - -", board.as_fen());
     }
 
     #[test]
     fn promotion_to_rook() {
         let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(board.make_move("h7h8r"));
-        assert_eq!("K6R/8/8/8/8/8/8/k7 b -", board.as_fen());
+        assert_eq!("K6R/8/8/8/8/8/8/k7 b - -", board.as_fen());
     }
 
     #[test]
     fn promotion_to_king_not_allowed() {
         let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(!board.make_move("h7h8k"));
-        assert_eq!("K7/7P/8/8/8/8/8/k7 w -", board.as_fen());
+        assert_eq!("K7/7P/8/8/8/8/8/k7 w - -", board.as_fen());
     }
 
     #[test]
     fn missing_promotion() {
         let mut board = Board::from_fen("K7/7P/8/8/8/8/8/k7 w -");
         assert!(!board.make_move("h7h8"));
-        assert_eq!("K7/7P/8/8/8/8/8/k7 w -", board.as_fen());
+        assert_eq!("K7/7P/8/8/8/8/8/k7 w - -", board.as_fen());
     }
 
     // https://gist.github.com/peterellisjones/8c46c28141c162d1d8a0f0badbc9cff9
@@ -1281,7 +1302,7 @@ mod tests {
         let mut board = Board::from_fen("rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R w QK");
         assert!(board.make_move("e1g1"));
         assert_eq!(
-            "rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB2RK1 b -",
+            "rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB2RK1 b - -",
             board.as_fen()
         );
     }
@@ -1292,7 +1313,7 @@ mod tests {
             Board::from_fen("r3k2r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/R3K2R w KQkq");
         assert!(board.make_move("e1c1"));
         assert_eq!(
-            "r3k2r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R b kq",
+            "r3k2r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R b kq -",
             board.as_fen()
         );
     }
@@ -1303,7 +1324,7 @@ mod tests {
             Board::from_fen("r3k2r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R b kq");
         assert!(board.make_move("e8g8"));
         assert_eq!(
-            "r4rk1/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R w -",
+            "r4rk1/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R w - -",
             board.as_fen()
         );
     }
@@ -1314,7 +1335,7 @@ mod tests {
             Board::from_fen("r3k2r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R b kq");
         assert!(board.make_move("e8c8"));
         assert_eq!(
-            "2kr3r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R w -",
+            "2kr3r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R w - -",
             board.as_fen()
         );
     }
@@ -1370,6 +1391,12 @@ mod tests {
         assert_eq!(H8, str_to_index("h8").unwrap());
         assert_eq!(A1, str_to_index("a1").unwrap());
         assert_eq!(H1, str_to_index("h1").unwrap());
+    }
+
+    #[test]
+    fn test_str_to_index_to_str() {
+        assert_eq!("a1", index_to_str(str_to_index("a1").unwrap()));
+        assert_eq!("h8", index_to_str(str_to_index("h8").unwrap()));
     }
 }
 
