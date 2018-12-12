@@ -175,6 +175,19 @@ fn abs_diff(a: u8, b: u8) -> u8 {
         b - a
     }
 }
+fn is_two_rank_move(src: u8, dst: u8) -> bool {
+    abs_diff(src, dst) == 16
+}
+fn get_en_passant_square(src: u8, dst: u8) -> u8 {
+    (src + dst) / 2
+}
+fn get_en_passant_capture_square(dst: u8, color: Color) -> u8 {
+    if color == Color::White {
+        dst + 8
+    } else {
+        dst - 8
+    }
+}
 
 impl Pieces {
     fn cleared() -> Pieces {
@@ -233,19 +246,14 @@ impl Pieces {
                     None => self.pawns.set_bit(dst),
                 }
             }
+
             self.pawns.clear_bit(src);
             enemies.capture(dst);
-            if let Some(en_passant) = *en_passant_square {
-                if dst == en_passant {
-                    if color == Color::White {
-                        enemies.capture(dst + 8);
-                    } else {
-                        enemies.capture(dst - 8);
-                    }
-                }
-            };
-            if abs_diff(src, dst) == 16 {
-                next_en_passant_square = Some((src + dst) / 2);
+            if en_passant_square.is_some() && en_passant_square.unwrap() == dst {
+                enemies.capture(get_en_passant_capture_square(dst, color));
+            }
+            if is_two_rank_move(src, dst) {
+                next_en_passant_square = Some(get_en_passant_square(src, dst));
             }
         } else if self.bishops.test_bit(src) {
             apply_move(&mut self.bishops, src, dst, enemies);
