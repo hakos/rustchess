@@ -984,7 +984,7 @@ fn str_to_index(s: &str) -> Option<u8> {
 fn index_to_str(index: u8) -> String {
     let point = Point::from_index(index);
     assert!(point.inside_board());
-    format!("{}{}", char::from('a' as u8 + point.x as u8), 8 - point.y)
+    format!("{}{}", char::from(b'a' + point.x as u8), 8 - point.y)
 }
 
 fn add_piece_symbols(chars: &mut [char; 64], pieces: BitBoard, symbol: char) {
