@@ -231,13 +231,20 @@ impl Pieces {
             apply_move(&mut self.bishops, src, dst, enemies);
         } else if self.rooks.test_bit(src) {
             apply_move(&mut self.rooks, src, dst, enemies);
+            if (color == Color::White && src == A1) || (color == Color::Black && src == A8) {
+                self.can_queen_side_castle = false;
+            } else if (color == Color::White && src == H1) || (color == Color::Black && src == H8) {
+                self.can_king_side_castle = false;
+            }
         } else if self.knights.test_bit(src) {
             apply_move(&mut self.knights, src, dst, enemies);
         } else if self.queens.test_bit(src) {
             apply_move(&mut self.queens, src, dst, enemies);
         } else if self.king.test_bit(src) {
             apply_move(&mut self.king, src, dst, enemies);
-            self.handle_castling(src, dst);
+            self.move_rook_if_castling(src, dst);
+            self.can_king_side_castle = false;
+            self.can_queen_side_castle = false;
         } else {
             panic!("Unknown piece!");
         }
@@ -245,27 +252,19 @@ impl Pieces {
         true
     }
 
-    fn handle_castling(&mut self, src: u8, dst: u8) {
+    fn move_rook_if_castling(&mut self, src: u8, dst: u8) {
         if is_white_king_side_castling(src, dst) {
             self.rooks.clear_bit(H1);
             self.rooks.set_bit(F1);
-            self.can_king_side_castle = false;
-            self.can_queen_side_castle = false;
         } else if is_white_queen_side_castling(src, dst) {
             self.rooks.clear_bit(A1);
             self.rooks.set_bit(D1);
-            self.can_king_side_castle = false;
-            self.can_queen_side_castle = false;
         } else if is_black_king_side_castling(src, dst) {
             self.rooks.clear_bit(H8);
             self.rooks.set_bit(F8);
-            self.can_king_side_castle = false;
-            self.can_queen_side_castle = false;
         } else if is_black_queen_side_castling(src, dst) {
             self.rooks.clear_bit(A8);
             self.rooks.set_bit(D8);
-            self.can_king_side_castle = false;
-            self.can_queen_side_castle = false;
         }
     }
 
@@ -991,7 +990,7 @@ mod tests {
     }
 
     #[test]
-    fn move_rook() {
+    fn move_rook_and_lose_castling_right() {
         let mut board = Board::initial_position();
         assert!(!board.make_move("a1a2"));
         assert!(!board.make_move("a1b1"));
@@ -999,7 +998,7 @@ mod tests {
         board.turn = Color::White;
         assert!(board.make_move("a1a2"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/P7/8/RPPPPPPP/1NBQKBNR b KQkq",
+            "rnbqkbnr/pppppppp/8/8/P7/8/RPPPPPPP/1NBQKBNR b Kkq",
             board.as_fen()
         );
     }
@@ -1017,14 +1016,14 @@ mod tests {
     }
 
     #[test]
-    fn move_king() {
+    fn move_king_and_lose_castling_rights() {
         let mut board = Board::initial_position();
         assert!(board.make_move("e2e4"));
         board.turn = Color::White;
         assert!(!board.make_move("e1e3")); // too far
         assert!(board.make_move("e1e2"));
         assert_eq!(
-            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPPKPPP/RNBQ1BNR b KQkq",
+            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPPKPPP/RNBQ1BNR b kq",
             board.as_fen()
         );
     }
@@ -1309,6 +1308,32 @@ mod tests {
             "2kr3r/pppqbppp/2n1pn2/3p1b2/3P1B2/2N1PN2/PPPQBPPP/2KR3R w -",
             board.as_fen()
         );
+    }
+
+    #[test]
+    fn moving_rook_loses_queen_side_castling_rights() {
+        let mut board = Board::from_fen("r1bqkbnr/ppppppp1/2n5/7p/P7/5N2/1PPPPPPP/RNBQKB1R w KQkq");
+
+        assert!(board.white.can_queen_side_castle);
+        assert!(board.make_move("a1a2"));
+        assert!(!board.white.can_queen_side_castle);
+
+        assert!(board.black.can_queen_side_castle);
+        assert!(board.make_move("a8b8"));
+        assert!(!board.black.can_queen_side_castle);
+    }
+
+    #[test]
+    fn moving_rook_loses_king_side_castling_rights() {
+        let mut board = Board::from_fen("r1bqkbnr/ppppppp1/2n5/7p/P7/5N2/1PPPPPPP/RNBQKB1R w KQkq");
+
+        assert!(board.white.can_king_side_castle);
+        assert!(board.make_move("h1g1"));
+        assert!(!board.white.can_king_side_castle);
+
+        assert!(board.black.can_king_side_castle);
+        assert!(board.make_move("h8h6"));
+        assert!(!board.black.can_king_side_castle);
     }
 
     #[test]
