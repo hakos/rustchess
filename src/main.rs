@@ -1366,10 +1366,10 @@ mod tests {
         assert!(str_to_index("i1").is_none());
         assert!(str_to_index("91").is_none());
 
-        assert_eq!(0, str_to_index("a8").unwrap());
-        assert_eq!(7, str_to_index("h8").unwrap());
-        assert_eq!(56, str_to_index("a1").unwrap());
-        assert_eq!(63, str_to_index("h1").unwrap());
+        assert_eq!(A8, str_to_index("a8").unwrap());
+        assert_eq!(H8, str_to_index("h8").unwrap());
+        assert_eq!(A1, str_to_index("a1").unwrap());
+        assert_eq!(H1, str_to_index("h1").unwrap());
     }
 }
 
