@@ -303,7 +303,7 @@ impl Pieces {
         }
     }
 
-    fn make_move(
+    fn verify_and_make_move(
         &mut self,
         enemies: &mut Pieces,
         m: Move,
@@ -1002,13 +1002,13 @@ impl Board {
         if self.turn == Color::White {
             if !self
                 .white
-                .make_move(&mut self.black, m, &mut self.en_passant_square, self.turn)
+                .verify_and_make_move(&mut self.black, m, &mut self.en_passant_square, self.turn)
             {
                 return false;
             }
         } else if !self
             .black
-            .make_move(&mut self.white, m, &mut self.en_passant_square, self.turn)
+            .verify_and_make_move(&mut self.white, m, &mut self.en_passant_square, self.turn)
         {
             return false;
         }
