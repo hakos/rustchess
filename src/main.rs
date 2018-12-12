@@ -992,14 +992,12 @@ impl Board {
             None
         };
 
-        self.make_move_impl(Move {
+        let m = Move {
             src,
             dst,
             promotion,
-        })
-    }
+        };
 
-    fn make_move_impl(&mut self, m: Move) -> bool {
         // Copy to be able to restore if move ends up in check
         let self_before_move = *self;
 
@@ -1020,6 +1018,30 @@ impl Board {
         if self.is_checked() {
             // Restore board
             *self = self_before_move;
+            return false;
+        }
+
+        self.turn = self.turn.other();
+
+        true
+    }
+
+    fn make_move_destructive(&mut self, m: Move) -> bool {
+        if self.turn == Color::White {
+            if !self
+                .white
+                .apply_move_impl(&mut self.black, m.src, m.dst, m.promotion, &mut self.en_passant_square, self.turn)
+            {
+                return false;
+            }
+        } else if !self
+            .black
+            .apply_move_impl(&mut self.white, m.src, m.dst, m.promotion, &mut self.en_passant_square, self.turn)
+        {
+            return false;
+        }
+
+        if self.is_checked() {
             return false;
         }
 
@@ -1099,7 +1121,7 @@ impl Board {
 
         for m in self.pseudo_legal_move_iter() {
             let mut self_copy = *self;
-            if self_copy.make_move_impl(m) {
+            if self_copy.make_move_destructive(m) {
                 let num = self_copy.perft(depth - 1, false);
                 if debug {
                     println!("{}: {}", m, num);
@@ -1586,7 +1608,7 @@ mod tests {
         assert_eq!(20, board.perft(1, false));
         assert_eq!(400, board.perft(2, false));
         assert_eq!(8902, board.perft(3, false));
-        //assert_eq!(197281, board.perft(4));
+        assert_eq!(197281, board.perft(4, false));
     }
 
     #[test]
