@@ -168,6 +168,13 @@ fn is_king_side_rook_square(index: u8, color: Color) -> bool {
         index == H8
     }
 }
+fn abs_diff(a: u8, b: u8) -> u8 {
+    if a > b {
+        a - b
+    } else {
+        b - a
+    }
+}
 
 impl Pieces {
     fn cleared() -> Pieces {
@@ -207,7 +214,10 @@ impl Pieces {
         dst: u8,
         promotion: Option<Promotion>,
         color: Color,
+        en_passant_target_square: &mut Option<u8>
     ) -> bool {
+        let mut next_en_passant_target_square = None;
+
         if self.pawns.test_bit(src) {
             if is_promotion_rank(dst, color) {
                 match promotion {
@@ -222,6 +232,9 @@ impl Pieces {
                     Some(_) => return false,
                     None => self.pawns.set_bit(dst),
                 }
+            }
+            if abs_diff(src, dst) == 16 {
+                next_en_passant_target_square = Some((src + dst) / 2);
             }
             self.pawns.clear_bit(src);
             enemies.capture(dst);
@@ -246,6 +259,8 @@ impl Pieces {
         } else {
             panic!("Unknown piece!");
         }
+
+        *en_passant_target_square = next_en_passant_target_square;
 
         true
     }
@@ -273,10 +288,11 @@ impl Pieces {
         dst: u8,
         promotion: Option<Promotion>,
         color: Color,
+        en_passant_target_square: &mut Option<u8>,
     ) -> bool {
         let allowed_moves = self.get_moves(enemies, color)[src as usize];
         if allowed_moves.test_bit(dst) {
-            self.apply_move_impl(enemies, src, dst, promotion, color)
+            self.apply_move_impl(enemies, src, dst, promotion, color, en_passant_target_square)
         } else {
             false
         }
@@ -461,7 +477,7 @@ impl Pieces {
             dsts_copy.for_each_bit(|dst| {
                 let mut enemies_copy = *enemies;
                 let mut self_copy = *self;
-                self_copy.apply_move_impl(&mut enemies_copy, src as u8, dst, None, color);
+                self_copy.apply_move_impl(&mut enemies_copy, src as u8, dst, None, color, &mut None);
                 if self_copy.is_checked_by(&enemies_copy, color.other()) {
                     dsts.clear_bit(dst);
                 }
@@ -825,13 +841,13 @@ impl Board {
         if self.turn == Color::White {
             if !self
                 .white
-                .make_move(&mut self.black, src, dst, promotion, self.turn)
+                .make_move(&mut self.black, src, dst, promotion, self.turn, &mut self.en_passant_target_square)
             {
                 return false;
             }
         } else if !self
             .black
-            .make_move(&mut self.white, src, dst, promotion, self.turn)
+            .make_move(&mut self.white, src, dst, promotion, self.turn, &mut self.en_passant_target_square)
         {
             return false;
         }
@@ -992,23 +1008,26 @@ mod tests {
     #[test]
     fn move_pawns() {
         let mut board = Board::initial_position();
+        assert!(!board.make_move("a2b3")); // no capture
         assert!(!board.make_move("e2e5")); // too far
         assert!(board.make_move("e2e4"));
         assert!(board.make_move("e7e5"));
         assert!(!board.make_move("e4e5")); // occupied
         assert_eq!(
-            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -",
+            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6",
             board.as_fen()
         );
     }
 
     #[test]
-    fn pawn_movement() {
+    fn opening_moves_fen() {
         let mut board = Board::initial_position();
-        assert!(!board.make_move("a2b4"));
-        assert!(board.make_move("d2d4"));
-        assert!(board.make_move("d7d5"));
-        assert!(!board.make_move("d4e5")); // no capture
+        assert!(board.make_move("e2e4"));
+        assert_eq!("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3", board.as_fen());
+        assert!(board.make_move("c7c5"));
+        assert_eq!("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6", board.as_fen());
+        assert!(board.make_move("g1f3"));
+        assert_eq!("rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -", board.as_fen());
     }
 
     #[test]
