@@ -171,10 +171,18 @@ fn is_black_queen_side_castling(src: u8, dst: u8) -> bool {
     src == E8 && dst == C8
 }
 fn is_queen_side_rook_square(index: u8, color: Color) -> bool {
-    if color == Color::White { index == A1 } else { index == A8 }
+    if color == Color::White {
+        index == A1
+    } else {
+        index == A8
+    }
 }
 fn is_king_side_rook_square(index: u8, color: Color) -> bool {
-    if color == Color::White { index == H1 } else { index == H8 }
+    if color == Color::White {
+        index == H1
+    } else {
+        index == H8
+    }
 }
 
 impl Pieces {
@@ -388,7 +396,7 @@ impl Pieces {
         moves
     }
 
-    fn get_moves(&self, enemies: &Pieces, color: Color) -> [BitBoard; 64] {
+    fn get_pseudo_legal_moves(&self, enemies: &Pieces, color: Color) -> [BitBoard; 64] {
         let mut moves: [BitBoard; 64] = [0; 64];
 
         self.pawns.for_each_bit(|src| {
@@ -426,8 +434,12 @@ impl Pieces {
         let castling_moves = self.get_castling_moves(enemies, color);
         moves[king_index as usize] = king_moves | castling_moves;
 
-        self.remove_moves_that_leave_us_checked(&mut moves, enemies, color);
+        moves
+    }
 
+    fn get_moves(&self, enemies: &Pieces, color: Color) -> [BitBoard; 64] {
+        let mut moves = self.get_pseudo_legal_moves(enemies, color);
+        self.remove_moves_that_leave_us_checked(&mut moves, enemies, color);
         moves
     }
 
