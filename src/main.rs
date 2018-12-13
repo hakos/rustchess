@@ -734,14 +734,14 @@ struct MoveIterator {
     promotion_iter: std::slice::Iter<'static, Promotion>,
 }
 
-const PROMOTIONS: [Promotion; 4] = [
+const ALL_PROMOTIONS: [Promotion; 4] = [
     Promotion::Queen,
     Promotion::Rook,
     Promotion::Knight,
     Promotion::Bishop,
 ];
 
-const EMPTY_PROMOTIONS: [Promotion; 0] = [];
+const NO_PROMOTIONS: [Promotion; 0] = [];
 
 impl Iterator for MoveIterator {
     type Item = Move;
@@ -772,7 +772,7 @@ impl Iterator for MoveIterator {
 
         if self.pawns.test_bit(self.src as u8) && is_promotion_rank(self.dst, self.color) {
             // Initiate promotion iterator
-            self.promotion_iter = PROMOTIONS.iter();
+            self.promotion_iter = ALL_PROMOTIONS.iter();
             let &promotion = self.promotion_iter.next().unwrap();
             return Some(Move {
                 src: self.src,
@@ -1092,7 +1092,7 @@ impl Board {
             },
             src: 0,
             dst: 0,
-            promotion_iter: EMPTY_PROMOTIONS.iter(),
+            promotion_iter: NO_PROMOTIONS.iter(),
             color: self.turn,
         }
     }
@@ -1109,7 +1109,7 @@ impl Board {
             let mut self_copy = *self;
             self_copy.make_move_unverified(m);
             if !self_copy.is_checked() {
-                self_copy.turn = self.turn.other();
+                self_copy.turn = self_copy.turn.other();
                 let num = self_copy.perft(depth - 1, false);
                 if debug {
                     println!("{}: {}", m, num);
