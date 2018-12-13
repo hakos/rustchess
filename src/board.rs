@@ -699,7 +699,7 @@ fn apply_move(pieces: &mut BitBoard, src: u8, dst: u8, enemies: &mut Pieces) {
 }
 
 #[derive(Copy, Clone)]
-struct Move {
+pub struct Move {
     src: u8,
     dst: u8,
     promotion: Option<Promotion>,
@@ -942,7 +942,7 @@ impl Board {
     }
 
     fn as_unicode(&self) -> [char; 64] {
-        let mut chars = [' '; 64];
+        let mut chars = ['.'; 64];
 
         add_piece_symbols(&mut chars, self.white.pawns, '♙');
         add_piece_symbols(&mut chars, self.white.knights, '♘');
@@ -1124,6 +1124,79 @@ impl Board {
 
         num_nodes
     }
+
+    fn myself_opponent(&self) -> (&Pieces, &Pieces) {
+        if self.turn == Color::White {
+            (&self.white, &self.black)
+        } else {
+            (&self.black, &self.white)
+        }
+    }
+
+    fn evaluate(&self) -> i32 {
+        if self.is_check_mated() {
+            -100
+        } else {
+            let (myself, opponent) = self.myself_opponent();
+
+            9 * (myself.queens.count() as i32 - opponent.queens.count() as i32) +
+            5 * (myself.rooks.count() as i32 - opponent.rooks.count() as i32) +
+            3 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32) +
+            3 * (myself.knights.count() as i32 - opponent.knights.count() as i32) +
+            1 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32)
+        }
+    }
+
+    pub fn negamax_impl(&self, depth: u32, mut alpha: i32, beta: i32) -> i32 {
+        // Reference: https://www.chessprogramming.org/Alpha-Beta
+
+        if depth == 0 {
+            return self.evaluate();
+        }
+
+        for m in self.pseudo_legal_move_iter() {
+            let mut self_copy = *self;
+            self_copy.make_move_unverified(m);
+            if !self_copy.is_checked() {
+                self_copy.turn = self_copy.turn.other();
+                let score = -self_copy.negamax_impl(depth - 1, -beta, -alpha);
+                if score >= beta {
+                    return beta; // fail hard beta-cutoff
+                }
+                if score > alpha {
+                    alpha = score; // alpha acts like max in MiniMax
+                }
+            }
+        }
+
+        alpha
+    }
+
+    pub fn negamax(&self, depth: u32, debug: bool) -> (i32, Move) {
+        assert!(depth > 0);
+
+        let mut alpha: i32 = -i32::max_value();
+        let beta: i32 = i32::max_value();
+        let mut best_move: Option<Move> = None;
+
+        for m in self.pseudo_legal_move_iter() {
+            let mut self_copy = *self;
+            self_copy.make_move_unverified(m);
+            if !self_copy.is_checked() {
+                self_copy.turn = self_copy.turn.other();
+                let score = -self_copy.negamax_impl(depth - 1, -beta, -alpha);
+                if debug {
+                    println!("{}: {}", m, score);
+                }
+                if score > alpha {
+                    best_move = Some(m);
+                    alpha = score; // alpha acts like max in MiniMax
+                }
+            }
+        }
+
+        (alpha, best_move.unwrap())
+    }
 }
 
 fn str_to_index(s: &str) -> Option<u8> {
@@ -1179,7 +1252,7 @@ fn unicode_to_fen(c: char) -> char {
         '♜' => 'r',
         '♛' => 'q',
         '♚' => 'k',
-        ' ' => ' ',
+        '.' => ' ',
         _ => panic!("Unknown char '{}'", c),
     }
 }
@@ -1206,7 +1279,7 @@ mod tests {
     #[test]
     fn initial_board_unicode() {
         assert_eq!(
-            "♜♞♝♛♚♝♞♜♟♟♟♟♟♟♟♟                                ♙♙♙♙♙♙♙♙♖♘♗♕♔♗♘♖",
+            "♜♞♝♛♚♝♞♜♟♟♟♟♟♟♟♟................................♙♙♙♙♙♙♙♙♖♘♗♕♔♗♘♖",
             Board::initial_position().as_unicode().iter().collect::<String>()
         );
     }
@@ -1734,5 +1807,27 @@ mod tests {
     fn test_str_to_index_to_str() {
         assert_eq!("a1", index_to_str(str_to_index("a1").unwrap()));
         assert_eq!("h8", index_to_str(str_to_index("h8").unwrap()));
+    }
+
+    #[test]
+    fn negamax_check_mate_in_one() {
+        let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b1K3/2q4B/7R b kq - 7 4");
+        let winning_move = board.negamax(1, true);
+        assert_eq!(100, winning_move.0);
+        assert_eq!("c2d2", format!("{}", winning_move.1));
+    }
+
+    #[test]
+    fn negamax_check_mate_in_two() {
+        let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b5/2q1K2B/7R w kq - 6 4");
+        assert_eq!(-100, board.negamax(2, true).0);
+    }
+
+    #[test]
+    fn negamax_check_mate_in_three() {
+        let board = Board::from_fen("r3k2r/Rb5q/8/8/8/2b5/4K2B/7R b kq - 3 2");
+        let winning_move = board.negamax(3, true);
+        assert_eq!(100, winning_move.0);
+        assert_eq!("h7c2", format!("{}", winning_move.1));
     }
 }
