@@ -1192,9 +1192,7 @@ impl Board {
         alpha
     }
 
-    pub fn negamax(&self, depth: u32, debug: bool) -> (i32, Move) {
-        assert!(depth > 0);
-
+    fn negamax_loop(&self, depth: u32, debug: bool) -> (i32, Move) {
         let mut alpha: i32 = -1000;
         let beta: i32 = 1000;
         let mut best_move: Option<Move> = None;
@@ -1215,14 +1213,26 @@ impl Board {
             }
         }
 
-        if best_move.is_none() {
-            for m in self.pseudo_legal_move_iter() {
-                println!("{}", m);
+        (alpha, best_move.unwrap())
+    }
+
+    pub fn negamax(&self, mut depth: u32, debug: bool) -> (i32, Move) {
+        assert!(depth > 0);
+
+        let (score, mut best_move) = self.negamax_loop(depth, debug);
+
+        // Stupid brute force to find shortest path to check mate
+        while score == 1000 && depth > 1 {
+            depth -= 1;
+            let (tmp_score, tmp_move) = self.negamax_loop(depth, false);
+            if tmp_score == 1000 {
+                best_move = tmp_move;
+            } else {
+                break;
             }
-            panic!("Found no legal move: {}", self.as_fen());
         }
 
-        (alpha, best_move.unwrap())
+        (score, best_move)
     }
 }
 
@@ -1694,13 +1704,6 @@ mod tests {
     }
 
     #[test]
-    fn perft_test_position_1123() {
-        let board = Board::from_fen("8/8/2k5/8/2K5/4q3/8/8 w - -");
-        assert_eq!(1, board.count_moves());
-        assert_eq!(1447612, board.perft(7, true));
-    }
-
-    #[test]
     fn perft_initial_position() {
         let board = Board::initial_position();
         assert_eq!(1, board.perft(0, false));
@@ -1878,17 +1881,18 @@ mod tests {
         let mut board = Board::from_fen("8/2k5/8/K7/8/4q3/8/8 b - -");
 
         let m1 = board.negamax(3, true);
-        //assert_eq!(1000, m1.0);
+        assert_eq!(1000, m1.0);
         assert_eq!("e3b3", format!("{}", m1.1));
         board.make_move("e3b3");
 
         let m2 = board.negamax(3, true);
-        //assert_eq!(-1000, m2.0);
+        assert_eq!(-1000, m2.0);
         assert_eq!("a5a6", format!("{}", m2.1));
         board.make_move("a5a6");
 
+        // Two possible moves to mate, make sure we take one of them
         let m3 = board.negamax(3, true);
-        //assert_eq!(1000, m3.0);
-        assert_eq!("b3a4", format!("{}", m3.1));
+        board.make_move(&format!("{}", m3.1));
+        assert!(board.is_check_mated());
     }
 }
