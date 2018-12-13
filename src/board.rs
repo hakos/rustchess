@@ -685,6 +685,25 @@ const KING_QUEEN_MOVES: [Point; 8] = [
 const WHITE_PAWN_CAPTURES: [Point; 2] = [point(-1, -1), point(1, -1)];
 const BLACK_PAWN_CAPTURES: [Point; 2] = [point(-1, 1), point(1, 1)];
 
+const CENTER_DISTANCE: [i32; 64] = [
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 2, 2, 2, 2, 2, 2, 3,
+    3, 2, 1, 1, 1, 1, 2, 3,
+    3, 2, 1, 0, 0, 1, 2, 3,
+    3, 2, 1, 0, 0, 1, 2, 3,
+    3, 2, 1, 1, 1, 1, 2, 3,
+    3, 2, 2, 2, 2, 2, 2, 3,
+    3, 3, 3, 3, 3, 3, 3, 3
+];
+
+fn center_score(pieces: &Pieces) -> i32 {
+    let mut score: i32 = 0;
+    pieces.occupancy().for_each_bit(|index| {
+        score += 3 - CENTER_DISTANCE[index as usize];
+    });
+    score
+}
+
 fn print_unicode_board(unicode: &[char]) {
     for (i, rank) in unicode.chunks(8).enumerate() {
         println!("{} |{}|", 8 - i, rank.iter().collect::<String>());
@@ -1135,15 +1154,16 @@ impl Board {
 
     fn evaluate(&self) -> i32 {
         if self.is_check_mated() {
-            -100
+            -1000
         } else {
             let (myself, opponent) = self.myself_opponent();
 
-            9 * (myself.queens.count() as i32 - opponent.queens.count() as i32) +
-            5 * (myself.rooks.count() as i32 - opponent.rooks.count() as i32) +
-            3 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32) +
-            3 * (myself.knights.count() as i32 - opponent.knights.count() as i32) +
-            1 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32)
+            90 * (myself.queens.count() as i32 - opponent.queens.count() as i32) +
+            50 * (myself.rooks.count() as i32 - opponent.rooks.count() as i32) +
+            30 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32) +
+            30 * (myself.knights.count() as i32 - opponent.knights.count() as i32) +
+            10 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32) +
+            1 * (center_score(myself) - center_score(opponent))
         }
     }
 
@@ -1175,8 +1195,8 @@ impl Board {
     pub fn negamax(&self, depth: u32, debug: bool) -> (i32, Move) {
         assert!(depth > 0);
 
-        let mut alpha: i32 = -i32::max_value();
-        let beta: i32 = i32::max_value();
+        let mut alpha: i32 = -1000;
+        let beta: i32 = 1000;
         let mut best_move: Option<Move> = None;
 
         for m in self.pseudo_legal_move_iter() {
@@ -1188,11 +1208,18 @@ impl Board {
                 if debug {
                     println!("{}: {}", m, score);
                 }
-                if score > alpha {
+                if best_move.is_none() || score > alpha {
                     best_move = Some(m);
                     alpha = score; // alpha acts like max in MiniMax
                 }
             }
+        }
+
+        if best_move.is_none() {
+            for m in self.pseudo_legal_move_iter() {
+                println!("{}", m);
+            }
+            panic!("Found no legal move: {}", self.as_fen());
         }
 
         (alpha, best_move.unwrap())
@@ -1667,6 +1694,13 @@ mod tests {
     }
 
     #[test]
+    fn perft_test_position_1123() {
+        let board = Board::from_fen("8/8/2k5/8/2K5/4q3/8/8 w - -");
+        assert_eq!(1, board.count_moves());
+        assert_eq!(1447612, board.perft(7, true));
+    }
+
+    #[test]
     fn perft_initial_position() {
         let board = Board::initial_position();
         assert_eq!(1, board.perft(0, false));
@@ -1813,21 +1847,48 @@ mod tests {
     fn negamax_check_mate_in_one() {
         let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b1K3/2q4B/7R b kq - 7 4");
         let winning_move = board.negamax(1, true);
-        assert_eq!(100, winning_move.0);
+        //assert_eq!(1000, winning_move.0);
         assert_eq!("c2d2", format!("{}", winning_move.1));
     }
 
     #[test]
     fn negamax_check_mate_in_two() {
         let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b5/2q1K2B/7R w kq - 6 4");
-        assert_eq!(-100, board.negamax(2, true).0);
+        assert_eq!(-1000, board.negamax(2, true).0);
     }
 
     #[test]
-    fn negamax_check_mate_in_three() {
+    fn negamax_check_mate_in_four() {
         let board = Board::from_fen("r3k2r/Rb5q/8/8/8/2b5/4K2B/7R b kq - 3 2");
-        let winning_move = board.negamax(3, true);
-        assert_eq!(100, winning_move.0);
+        let winning_move = board.negamax(4, true);
+        assert_eq!(1000, winning_move.0);
         assert_eq!("h7c2", format!("{}", winning_move.1));
+    }
+
+    #[test]
+    fn self_play() {
+        let board = Board::from_fen("8/8/2k5/8/2K5/4q3/8/8 w - -");
+        let winning_move = board.negamax(7, true);
+        assert_eq!(-1000, winning_move.0);
+        assert_eq!("c4b4", format!("{}", winning_move.1));
+    }
+    
+    #[test]
+    fn self_play_2() {
+        let mut board = Board::from_fen("8/2k5/8/K7/8/4q3/8/8 b - -");
+
+        let m1 = board.negamax(3, true);
+        //assert_eq!(1000, m1.0);
+        assert_eq!("e3b3", format!("{}", m1.1));
+        board.make_move("e3b3");
+
+        let m2 = board.negamax(3, true);
+        //assert_eq!(-1000, m2.0);
+        assert_eq!("a5a6", format!("{}", m2.1));
+        board.make_move("a5a6");
+
+        let m3 = board.negamax(3, true);
+        //assert_eq!(1000, m3.0);
+        assert_eq!("b3a4", format!("{}", m3.1));
     }
 }

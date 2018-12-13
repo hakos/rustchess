@@ -28,21 +28,17 @@ fn main() {
 
     print_state(&board);
     let stdin = io::stdin();
-    for line in stdin.lock().lines() {
-        if board.turn() == board::Color::White {
-            let user_move = line.unwrap();
-            if board.make_move(&user_move) {
-                print_state(&board);
-                println!("Computer is thinking...");
-                let computer_move = board.negamax(8, true);
-                println!("Computer move {} with evaluation {}", computer_move.1, computer_move.0);
-                board.make_move(&format!("{}", computer_move.1));
-                print_state(&board);
-            } else {
-                println!("Illegal move, try again");
-                print_state(&board);
-            }
-        }
+    loop {
+    //for line in stdin.lock().lines() {
+        //if board.turn() == board::Color::White {
+            //let user_move = line.unwrap();
+            //if board.make_move(&user_move) {
+            print_state(&board);
+            //println!("Computer is thinking...");
+            let computer_move = board.negamax(6, false);
+            println!("Computer move {} with evaluation {}", computer_move.1, computer_move.0);
+            assert!(board.make_move(&format!("{}", computer_move.1)));
+        //}
     }
     println!("Bye");
 }
