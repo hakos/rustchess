@@ -615,7 +615,7 @@ impl Pieces {
 pub struct Board {
     white: Pieces,
     black: Pieces,
-    pub turn: Color,
+    turn: Color,
     en_passant_square: Option<u8>,
 }
 
@@ -1074,6 +1074,10 @@ impl Board {
 
     pub fn is_check_mated(&self) -> bool {
         self.is_checked() && self.count_moves() == 0
+    }
+
+    pub fn turn(&self) -> Color {
+        self.turn
     }
 
     fn pseudo_legal_move_iter(&self) -> MoveIterator {

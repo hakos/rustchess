@@ -17,13 +17,13 @@ fn main() {
         println!("FEN: {}", board.as_fen());
         board.print();
         if board.is_check_mated() {
-            println!("Check mate! {:?} wins", board.turn.other());
+            println!("Check mate! {:?} wins", board.turn().other());
             std::process::exit(0);
         };
         if board.is_checked() {
             print!("Check! ");
         };
-        println!("{:?}'s turn", board.turn);
+        println!("{:?}'s turn", board.turn());
     };
 
     print_state(&board);
