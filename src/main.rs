@@ -217,7 +217,6 @@ impl Pieces {
         self.knights.clear_bit(index);
         self.bishops.clear_bit(index);
         self.queens.clear_bit(index);
-        self.king.clear_bit(index);
     }
 
     fn apply_move_impl(
