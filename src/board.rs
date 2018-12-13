@@ -1877,21 +1877,21 @@ mod tests {
     }
     
     #[test]
-    fn self_play_2() {
+    fn find_shortest_path_to_mate() {
         let mut board = Board::from_fen("8/2k5/8/K7/8/4q3/8/8 b - -");
 
-        let m1 = board.negamax(3, true);
+        let m1 = board.negamax(6, true);
         assert_eq!(1000, m1.0);
         assert_eq!("e3b3", format!("{}", m1.1));
         board.make_move("e3b3");
 
-        let m2 = board.negamax(3, true);
+        let m2 = board.negamax(6, true);
         assert_eq!(-1000, m2.0);
         assert_eq!("a5a6", format!("{}", m2.1));
         board.make_move("a5a6");
 
         // Two possible moves to mate, make sure we take one of them
-        let m3 = board.negamax(3, true);
+        let m3 = board.negamax(6, true);
         board.make_move(&format!("{}", m3.1));
         assert!(board.is_check_mated());
     }
