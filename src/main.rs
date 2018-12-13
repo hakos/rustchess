@@ -1024,28 +1024,16 @@ impl Board {
         true
     }
 
-    fn make_move_destructive(&mut self, m: Move) -> bool {
+    fn make_move_unverified(&mut self, m: Move) {
         if self.turn == Color::White {
-            if !self
+            assert!(self
                 .white
-                .apply_move_impl(&mut self.black, m.src, m.dst, m.promotion, &mut self.en_passant_square, self.turn)
-            {
-                return false;
-            }
-        } else if !self
-            .black
-            .apply_move_impl(&mut self.white, m.src, m.dst, m.promotion, &mut self.en_passant_square, self.turn)
-        {
-            return false;
+                .apply_move_impl(&mut self.black, m.src, m.dst, m.promotion, &mut self.en_passant_square, self.turn));
+        } else {
+            assert!(self
+                .black
+                .apply_move_impl(&mut self.white, m.src, m.dst, m.promotion, &mut self.en_passant_square, self.turn));
         }
-
-        if self.is_checked() {
-            return false;
-        }
-
-        self.turn = self.turn.other();
-
-        true
     }
 
     #[cfg(test)]
@@ -1117,9 +1105,12 @@ impl Board {
             return 1;
         }
 
+        // Pseudo legal moves may leave us checked
         for m in self.pseudo_legal_move_iter() {
             let mut self_copy = *self;
-            if self_copy.make_move_destructive(m) {
+            self_copy.make_move_unverified(m);
+            if !self_copy.is_checked() {
+                self_copy.turn = self.turn.other();
                 let num = self_copy.perft(depth - 1, false);
                 if debug {
                     println!("{}: {}", m, num);
