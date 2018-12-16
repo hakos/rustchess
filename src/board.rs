@@ -1106,19 +1106,10 @@ impl Board {
     }
 
     fn pseudo_legal_move_iter(&self) -> MoveIterator {
+        let (myself, opponent) = self.myself_opponent();
         MoveIterator {
-            moves: if self.turn == Color::White {
-                self.white
-                    .get_pseudo_legal_moves(&self.black, self.en_passant_square, self.turn)
-            } else {
-                self.black
-                    .get_pseudo_legal_moves(&self.white, self.en_passant_square, self.turn)
-            },
-            pawns: if self.turn == Color::White {
-                self.white.pawns
-            } else {
-                self.black.pawns
-            },
+            moves: myself.get_pseudo_legal_moves(opponent, self.en_passant_square, self.turn),
+            pawns: myself.pawns,
             src: 0,
             dst: 0,
             promotion_iter: NO_PROMOTIONS.iter(),
