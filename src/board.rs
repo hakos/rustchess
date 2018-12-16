@@ -687,6 +687,7 @@ const BLACK_PAWN_CAPTURES: [Point; 2] = [point(-1, 1), point(1, 1)];
 
 const MATE_SCORE: i32 = 1000;
 
+#[cfg_attr(rustfmt, rustfmt_skip)]
 const CENTER_DISTANCE: [i32; 64] = [
     3, 3, 3, 3, 3, 3, 3, 3,
     3, 2, 2, 2, 2, 2, 2, 3,
@@ -792,7 +793,7 @@ impl Iterator for MoveIterator {
         moves.clear_bit(self.dst);
 
         if self.pawns.test_bit(self.src as u8) && is_promotion_rank(self.dst, self.color) {
-            // Initiate promotion iterator
+            // Start iterating over all promotions
             self.promotion_iter = ALL_PROMOTIONS.iter();
             let &promotion = self.promotion_iter.next().unwrap();
             return Some(Move {
@@ -1020,16 +1021,20 @@ impl Board {
         let self_before_move = *self;
 
         if self.turn == Color::White {
-            if !self
-                .white
-                .verify_and_make_move(&mut self.black, m, &mut self.en_passant_square, self.turn)
-            {
+            if !self.white.verify_and_make_move(
+                &mut self.black,
+                m,
+                &mut self.en_passant_square,
+                self.turn,
+            ) {
                 return false;
             }
-        } else if !self
-            .black
-            .verify_and_make_move(&mut self.white, m, &mut self.en_passant_square, self.turn)
-        {
+        } else if !self.black.verify_and_make_move(
+            &mut self.white,
+            m,
+            &mut self.en_passant_square,
+            self.turn,
+        ) {
             return false;
         }
 
@@ -1046,13 +1051,23 @@ impl Board {
 
     fn make_move_unverified(&mut self, m: Move) {
         if self.turn == Color::White {
-            assert!(self
-                .white
-                .apply_move_impl(&mut self.black, m.src, m.dst, m.promotion, &mut self.en_passant_square, self.turn));
+            assert!(self.white.apply_move_impl(
+                &mut self.black,
+                m.src,
+                m.dst,
+                m.promotion,
+                &mut self.en_passant_square,
+                self.turn
+            ));
         } else {
-            assert!(self
-                .black
-                .apply_move_impl(&mut self.white, m.src, m.dst, m.promotion, &mut self.en_passant_square, self.turn));
+            assert!(self.black.apply_move_impl(
+                &mut self.white,
+                m.src,
+                m.dst,
+                m.promotion,
+                &mut self.en_passant_square,
+                self.turn
+            ));
         }
     }
 
@@ -1152,12 +1167,12 @@ impl Board {
     fn evaluate(&self) -> i32 {
         let (myself, opponent) = self.myself_opponent();
 
-        90 * (myself.queens.count() as i32 - opponent.queens.count() as i32) +
-        50 * (myself.rooks.count() as i32 - opponent.rooks.count() as i32) +
-        30 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32) +
-        30 * (myself.knights.count() as i32 - opponent.knights.count() as i32) +
-        10 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32) +
-        1 * (center_score(myself) - center_score(opponent))
+        90 * (myself.queens.count() as i32 - opponent.queens.count() as i32)
+            + 50 * (myself.rooks.count() as i32 - opponent.rooks.count() as i32)
+            + 30 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32)
+            + 30 * (myself.knights.count() as i32 - opponent.knights.count() as i32)
+            + 10 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32)
+            + 1 * (center_score(myself) - center_score(opponent))
     }
 
     pub fn negamax_impl(&self, depth: u32, max_depth: u32, mut alpha: i32, beta: i32) -> i32 {
@@ -1683,7 +1698,8 @@ mod tests {
 
     #[test]
     fn perft_test_position_10() {
-        let board = Board::from_fen("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - -");
+        let board =
+            Board::from_fen("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - -");
         assert_eq!(89890, board.perft(3, true));
     }
 
@@ -1871,7 +1887,7 @@ mod tests {
         assert_eq!(-(MATE_SCORE - 6), winning_move.0);
         assert_eq!("c4b4", format!("{}", winning_move.1));
     }
-    
+
     #[test]
     fn find_shortest_path_to_mate() {
         let mut board = Board::from_fen("8/2k5/8/K7/8/4q3/8/8 b - -");
