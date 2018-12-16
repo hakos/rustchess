@@ -685,6 +685,8 @@ const KING_QUEEN_MOVES: [Point; 8] = [
 const WHITE_PAWN_CAPTURES: [Point; 2] = [point(-1, -1), point(1, -1)];
 const BLACK_PAWN_CAPTURES: [Point; 2] = [point(-1, 1), point(1, 1)];
 
+const MATE_SCORE: i32 = 1000;
+
 const CENTER_DISTANCE: [i32; 64] = [
     3, 3, 3, 3, 3, 3, 3, 3,
     3, 2, 2, 2, 2, 2, 2, 3,
@@ -1167,7 +1169,7 @@ impl Board {
         1 * (center_score(myself) - center_score(opponent))
     }
 
-    pub fn negamax_impl(&self, depth: u32, mut alpha: i32, beta: i32) -> i32 {
+    pub fn negamax_impl(&self, depth: u32, max_depth: u32, mut alpha: i32, beta: i32) -> i32 {
         // Reference: https://www.chessprogramming.org/Alpha-Beta
 
         if depth == 0 {
@@ -1181,7 +1183,7 @@ impl Board {
             if !self_copy.is_checked() {
                 any_legal_moves = true;
                 self_copy.turn = self_copy.turn.other();
-                let score = -self_copy.negamax_impl(depth - 1, -beta, -alpha);
+                let score = -self_copy.negamax_impl(depth - 1, max_depth, -beta, -alpha);
                 if score >= beta {
                     return beta; // fail hard beta-cutoff
                 }
@@ -1192,8 +1194,15 @@ impl Board {
         }
 
         if !any_legal_moves {
-            // Stale mate or check mate
-            let score = if self.is_checked() { -1000 } else { 0 };
+            let score = if self.is_checked() {
+                // Check mate
+                let current_depth = (max_depth - depth) as i32;
+                // Add depth to prefer mate in fewer moves
+                -MATE_SCORE + current_depth
+            } else {
+                // Stale mate
+                0
+            };
             if score >= beta {
                 return beta;
             }
@@ -1205,9 +1214,11 @@ impl Board {
         alpha
     }
 
-    fn negamax_loop(&self, depth: u32, debug: bool) -> (i32, Move) {
-        let mut alpha: i32 = -1000;
-        let beta: i32 = 1000;
+    pub fn negamax(&self, depth: u32, debug: bool) -> (i32, Move) {
+        assert!(depth > 0);
+
+        let mut alpha = -MATE_SCORE;
+        let beta = MATE_SCORE;
         let mut best_move: Option<Move> = None;
 
         for m in self.pseudo_legal_move_iter() {
@@ -1215,7 +1226,7 @@ impl Board {
             self_copy.make_move_unverified(m);
             if !self_copy.is_checked() {
                 self_copy.turn = self_copy.turn.other();
-                let score = -self_copy.negamax_impl(depth - 1, -beta, -alpha);
+                let score = -self_copy.negamax_impl(depth - 1, depth, -beta, -alpha);
                 if debug {
                     println!("{}: {}", m, score);
                 }
@@ -1227,25 +1238,6 @@ impl Board {
         }
 
         (alpha, best_move.unwrap())
-    }
-
-    pub fn negamax(&self, mut depth: u32, debug: bool) -> (i32, Move) {
-        assert!(depth > 0);
-
-        let (score, mut best_move) = self.negamax_loop(depth, debug);
-
-        // Stupid brute force to find shortest path to check mate
-        while score == 1000 && depth > 1 {
-            depth -= 1;
-            let (tmp_score, tmp_move) = self.negamax_loop(depth, false);
-            if tmp_score == 1000 {
-                best_move = tmp_move;
-            } else {
-                break;
-            }
-        }
-
-        (score, best_move)
     }
 }
 
@@ -1863,29 +1855,29 @@ mod tests {
     fn negamax_check_mate_in_one() {
         let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b1K3/2q4B/7R b kq - 7 4");
         let winning_move = board.negamax(2, true);
-        //assert_eq!(1000, winning_move.0);
+        assert_eq!(MATE_SCORE - 1, winning_move.0);
         assert_eq!("c2d2", format!("{}", winning_move.1));
     }
 
     #[test]
     fn negamax_check_mate_in_two() {
         let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b5/2q1K2B/7R w kq - 6 4");
-        assert_eq!(-1000, board.negamax(3, true).0);
+        assert_eq!(-(MATE_SCORE - 2), board.negamax(3, true).0);
     }
 
     #[test]
-    fn negamax_check_mate_in_four() {
+    fn negamax_check_mate_in_three() {
         let board = Board::from_fen("r3k2r/Rb5q/8/8/8/2b5/4K2B/7R b kq - 3 2");
         let winning_move = board.negamax(4, true);
-        assert_eq!(1000, winning_move.0);
+        assert_eq!(MATE_SCORE - 3, winning_move.0);
         assert_eq!("h7c2", format!("{}", winning_move.1));
     }
 
     #[test]
-    fn self_play() {
+    fn negamax_check_mate_in_six() {
         let board = Board::from_fen("8/8/2k5/8/2K5/4q3/8/8 w - -");
         let winning_move = board.negamax(7, true);
-        assert_eq!(-1000, winning_move.0);
+        assert_eq!(-(MATE_SCORE - 6), winning_move.0);
         assert_eq!("c4b4", format!("{}", winning_move.1));
     }
     
@@ -1894,17 +1886,18 @@ mod tests {
         let mut board = Board::from_fen("8/2k5/8/K7/8/4q3/8/8 b - -");
 
         let m1 = board.negamax(6, true);
-        assert_eq!(1000, m1.0);
+        assert_eq!(MATE_SCORE - 3, m1.0);
         assert_eq!("e3b3", format!("{}", m1.1));
         board.make_move("e3b3");
 
         let m2 = board.negamax(6, true);
-        assert_eq!(-1000, m2.0);
+        assert_eq!(-(MATE_SCORE - 2), m2.0);
         assert_eq!("a5a6", format!("{}", m2.1));
         board.make_move("a5a6");
 
         // Two possible moves to mate, make sure we take one of them
         let m3 = board.negamax(6, true);
+        assert_eq!(MATE_SCORE - 1, m3.0);
         board.make_move(&format!("{}", m3.1));
         assert!(board.is_check_mated());
     }
