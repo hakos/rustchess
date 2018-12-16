@@ -609,6 +609,31 @@ impl Pieces {
         let king_index = self.king.first_bit();
         self.square_is_attacked_by(king_index, enemies, attacker)
     }
+
+    fn count_doubled_pawns(&self) -> i32 {
+        let mut count: i32 = 0;
+        let mut remaining = self.pawns;
+        while remaining != 0 {
+            let index = remaining.first_bit();
+            let file = Point::from_index(index).x;
+            let pawns_in_same_file = FILES[file as usize] & remaining;
+            count += pawns_in_same_file.count() as i32 - 1;
+            remaining &= !pawns_in_same_file;
+        }
+        count
+    }
+
+    fn count_isolated_pawns(&self) -> i32 {
+        let mut count: i32 = 0;
+        self.pawns.for_each_bit(|index| {
+            let file = Point::from_index(index).x;
+            let pawns_in_neighbor_files = NEIGHBOR_FILES[file as usize] & self.pawns;
+            if pawns_in_neighbor_files == 0 {
+                count += 1
+            }
+        });
+        count
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -706,6 +731,30 @@ fn center_score(pieces: &Pieces) -> i32 {
     });
     score
 }
+
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
+const FILES: [BitBoard; 8] = [
+    0b00000001_00000001_00000001_00000001_00000001_00000001_00000001_00000001,
+    0b00000010_00000010_00000010_00000010_00000010_00000010_00000010_00000010,
+    0b00000100_00000100_00000100_00000100_00000100_00000100_00000100_00000100,
+    0b00001000_00001000_00001000_00001000_00001000_00001000_00001000_00001000,
+    0b00010000_00010000_00010000_00010000_00010000_00010000_00010000_00010000,
+    0b00100000_00100000_00100000_00100000_00100000_00100000_00100000_00100000,
+    0b01000000_01000000_01000000_01000000_01000000_01000000_01000000_01000000,
+    0b10000000_10000000_10000000_10000000_10000000_10000000_10000000_10000000,
+];
+
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
+const NEIGHBOR_FILES: [BitBoard; 8] = [
+    0b00000010_00000010_00000010_00000010_00000010_00000010_00000010_00000010,
+    0b00000101_00000101_00000101_00000101_00000101_00000101_00000101_00000101,
+    0b00001010_00001010_00001010_00001010_00001010_00001010_00001010_00001010,
+    0b00010100_00010100_00010100_00010100_00010100_00010100_00010100_00010100,
+    0b00101000_00101000_00101000_00101000_00101000_00101000_00101000_00101000,
+    0b01010000_01010000_01010000_01010000_01010000_01010000_01010000_01010000,
+    0b10100000_10100000_10100000_10100000_10100000_10100000_10100000_10100000,
+    0b01000000_01000000_01000000_01000000_01000000_01000000_01000000_01000000,
+];
 
 fn print_unicode_board(unicode: &[char]) {
     for (i, rank) in unicode.chunks(8).enumerate() {
@@ -1172,6 +1221,8 @@ impl Board {
             + 30 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32)
             + 30 * (myself.knights.count() as i32 - opponent.knights.count() as i32)
             + 10 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32)
+            - 5 * (myself.count_doubled_pawns() as i32 - opponent.count_doubled_pawns())
+            - 5 * (myself.count_isolated_pawns() as i32 - opponent.count_isolated_pawns())
             + 1 * (center_score(myself) - center_score(opponent))
     }
 
@@ -1256,11 +1307,10 @@ impl Board {
         let mut best_move: Option<Move> = None;
         let mut depth = 1;
 
-        return loop {
+        loop {
             let iteration_start = std::time::Instant::now();
 
-            println!("Searching depth {}", depth);
-            let r = self.negamax(depth, true, best_move);
+            let r = self.negamax(depth, false, best_move);
             let best_score = r.0;
             best_move = Some(r.1);
 
@@ -1281,7 +1331,7 @@ impl Board {
             }
 
             depth += 1;
-        };
+        }
     }
 }
 
@@ -1384,6 +1434,31 @@ mod tests {
             "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3",
             Board::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3").as_fen(),
         );
+    }
+
+    #[test]
+    fn count_doubled_pawns() {
+        assert_eq!(0, Board::initial_position().white.count_doubled_pawns());
+        assert_eq!(
+            1,
+            Board::from_fen("rnbqkbnr/ppp1pppp/8/8/3Pp3/8/PPP2PPP/RNBQKBNR w KQkq - 0 3")
+                .black
+                .count_doubled_pawns()
+        );
+        assert_eq!(
+            2,
+            Board::from_fen("rnbqkbnr/ppp1p1pp/8/4p3/3Pp3/8/PPP2PPP/RN1QKBNR w KQkq - 0 5")
+                .black
+                .count_doubled_pawns()
+        );
+    }
+
+    #[test]
+    fn count_isolated_pawns() {
+        assert_eq!(0, Board::initial_position().white.count_isolated_pawns());
+        let test = Board::from_fen("rnbqkbnr/ppp4p/8/4p1P1/3pP3/8/PPP3P1/RN1QKBNR b KQkq - 0 8");
+        assert_eq!(1, test.black.count_isolated_pawns());
+        assert_eq!(3, test.white.count_isolated_pawns());
     }
 
     #[test]
