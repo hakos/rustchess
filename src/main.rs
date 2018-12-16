@@ -20,6 +20,10 @@ fn main() {
             println!("Check mate! {:?} wins", board.turn().other());
             std::process::exit(0);
         };
+        if board.is_stale_mate() {
+            println!("Stale mate! It's a draw");
+            std::process::exit(0);
+        };
         if board.is_checked() {
             print!("Check! ");
         };
