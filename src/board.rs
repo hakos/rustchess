@@ -1095,6 +1095,10 @@ impl Board {
         self.is_checked() && self.count_moves() == 0
     }
 
+    pub fn is_stale_mate(&self) -> bool {
+        !self.is_checked() && self.count_moves() == 0
+    }
+
     pub fn turn(&self) -> Color {
         self.turn
     }
@@ -1153,18 +1157,14 @@ impl Board {
     }
 
     fn evaluate(&self) -> i32 {
-        if self.is_check_mated() {
-            -1000
-        } else {
-            let (myself, opponent) = self.myself_opponent();
+        let (myself, opponent) = self.myself_opponent();
 
-            90 * (myself.queens.count() as i32 - opponent.queens.count() as i32) +
-            50 * (myself.rooks.count() as i32 - opponent.rooks.count() as i32) +
-            30 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32) +
-            30 * (myself.knights.count() as i32 - opponent.knights.count() as i32) +
-            10 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32) +
-            1 * (center_score(myself) - center_score(opponent))
-        }
+        90 * (myself.queens.count() as i32 - opponent.queens.count() as i32) +
+        50 * (myself.rooks.count() as i32 - opponent.rooks.count() as i32) +
+        30 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32) +
+        30 * (myself.knights.count() as i32 - opponent.knights.count() as i32) +
+        10 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32) +
+        1 * (center_score(myself) - center_score(opponent))
     }
 
     pub fn negamax_impl(&self, depth: u32, mut alpha: i32, beta: i32) -> i32 {
@@ -1174,10 +1174,12 @@ impl Board {
             return self.evaluate();
         }
 
+        let mut any_legal_moves = false;
         for m in self.pseudo_legal_move_iter() {
             let mut self_copy = *self;
             self_copy.make_move_unverified(m);
             if !self_copy.is_checked() {
+                any_legal_moves = true;
                 self_copy.turn = self_copy.turn.other();
                 let score = -self_copy.negamax_impl(depth - 1, -beta, -alpha);
                 if score >= beta {
@@ -1186,6 +1188,17 @@ impl Board {
                 if score > alpha {
                     alpha = score; // alpha acts like max in MiniMax
                 }
+            }
+        }
+
+        if !any_legal_moves {
+            // Stale mate or check mate
+            let score = if self.is_checked() { -1000 } else { 0 };
+            if score >= beta {
+                return beta;
+            }
+            if score > alpha {
+                alpha = score;
             }
         }
 
@@ -1849,7 +1862,7 @@ mod tests {
     #[test]
     fn negamax_check_mate_in_one() {
         let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b1K3/2q4B/7R b kq - 7 4");
-        let winning_move = board.negamax(1, true);
+        let winning_move = board.negamax(2, true);
         //assert_eq!(1000, winning_move.0);
         assert_eq!("c2d2", format!("{}", winning_move.1));
     }
@@ -1857,7 +1870,7 @@ mod tests {
     #[test]
     fn negamax_check_mate_in_two() {
         let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b5/2q1K2B/7R w kq - 6 4");
-        assert_eq!(-1000, board.negamax(2, true).0);
+        assert_eq!(-1000, board.negamax(3, true).0);
     }
 
     #[test]
@@ -1894,5 +1907,19 @@ mod tests {
         let m3 = board.negamax(6, true);
         board.make_move(&format!("{}", m3.1));
         assert!(board.is_check_mated());
+    }
+
+    #[test]
+    fn stale_mate() {
+        let board = Board::from_fen("5bnr/4p1pq/4Qpkr/7p/2P4P/8/PP1PPPP1/RNB1KBNR b KQ - 0 10");
+        assert!(board.is_stale_mate());
+    }
+
+    #[test]
+    fn avoid_stale_mate_when_winning() {
+        let mut board = Board::from_fen("4k3/4p3/4PP2/8/1BP4P/1P6/P2P4/RN1K1B2 w - -");
+        let m = board.negamax(2, true);
+        assert!(board.make_move(&format!("{}", m.1)));
+        assert!(!board.is_stale_mate());
     }
 }
