@@ -1230,7 +1230,7 @@ impl Board {
                 if debug {
                     println!("{}: {}", m, score);
                 }
-                if best_move.is_none() || score > alpha {
+                if score > alpha {
                     best_move = Some(m);
                     alpha = score; // alpha acts like max in MiniMax
                 }
