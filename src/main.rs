@@ -39,7 +39,7 @@ fn main() {
             //if board.make_move(&user_move) {
             print_state(&board);
             //println!("Computer is thinking...");
-            let computer_move = board.negamax(6, false);
+            let computer_move = board.negamax_iterative_deepening(std::time::Duration::new(10, 0));
             println!("Computer move {} with evaluation {}", computer_move.1, computer_move.0);
             assert!(board.make_move(&format!("{}", computer_move.1)));
         //}
