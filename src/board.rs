@@ -1859,7 +1859,7 @@ mod tests {
     }
 
     #[test]
-    fn negamax_check_mate_in_one() {
+    fn negamax_mate_in_one() {
         let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b1K3/2q4B/7R b kq - 7 4");
         let winning_move = board.negamax(2, true);
         assert_eq!(MATE_SCORE - 1, winning_move.0);
@@ -1873,7 +1873,7 @@ mod tests {
     }
 
     #[test]
-    fn negamax_check_mate_in_three() {
+    fn negamax_mate_in_three() {
         let board = Board::from_fen("r3k2r/Rb5q/8/8/8/2b5/4K2B/7R b kq - 3 2");
         let winning_move = board.negamax(4, true);
         assert_eq!(MATE_SCORE - 3, winning_move.0);
@@ -1881,7 +1881,7 @@ mod tests {
     }
 
     #[test]
-    fn negamax_check_mate_in_six() {
+    fn negamax_mate_in_six() {
         let board = Board::from_fen("8/8/2k5/8/2K5/4q3/8/8 w - -");
         let winning_move = board.negamax(7, true);
         assert_eq!(-(MATE_SCORE - 6), winning_move.0);
