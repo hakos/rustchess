@@ -615,8 +615,8 @@ impl Pieces {
         let mut remaining = self.pawns;
         while remaining != 0 {
             let index = remaining.first_bit();
-            let file = Point::from_index(index).x;
-            let pawns_in_same_file = FILES[file as usize] & remaining;
+            let file = Point::from_index(index).x as usize;
+            let pawns_in_same_file = FILES[file] & remaining;
             count += pawns_in_same_file.count() as i32 - 1;
             remaining &= !pawns_in_same_file;
         }
@@ -626,13 +626,21 @@ impl Pieces {
     fn count_isolated_pawns(&self) -> i32 {
         let mut count: i32 = 0;
         self.pawns.for_each_bit(|index| {
-            let file = Point::from_index(index).x;
-            let pawns_in_neighbor_files = NEIGHBOR_FILES[file as usize] & self.pawns;
+            let file = Point::from_index(index).x as usize;
+            let pawns_in_neighbor_files = NEIGHBOR_FILES[file] & self.pawns;
             if pawns_in_neighbor_files == 0 {
                 count += 1
             }
         });
         count
+    }
+
+    fn count_pawns_protecting_king(&self) -> i32 {
+        assert_eq!(1, self.king.count());
+        let king_file = Point::from_index(self.king.first_bit()).x as usize;
+        let protecting_files = FILES[king_file] | NEIGHBOR_FILES[king_file];
+        let protecting_pawns = protecting_files & self.pawns;
+        protecting_pawns.count() as i32
     }
 }
 
@@ -1221,9 +1229,10 @@ impl Board {
             + 30 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32)
             + 30 * (myself.knights.count() as i32 - opponent.knights.count() as i32)
             + 10 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32)
+            + 2 * (myself.count_pawns_protecting_king() as i32 - opponent.count_pawns_protecting_king() as i32)
+            + 1 * (center_score(myself) - center_score(opponent))
             - 5 * (myself.count_doubled_pawns() as i32 - opponent.count_doubled_pawns())
             - 5 * (myself.count_isolated_pawns() as i32 - opponent.count_isolated_pawns())
-            + 1 * (center_score(myself) - center_score(opponent))
     }
 
     pub fn negamax_impl(&self, depth: u32, max_depth: u32, mut alpha: i32, beta: i32) -> i32 {
@@ -1459,6 +1468,14 @@ mod tests {
         let test = Board::from_fen("rnbqkbnr/ppp4p/8/4p1P1/3pP3/8/PPP3P1/RN1QKBNR b KQkq - 0 8");
         assert_eq!(1, test.black.count_isolated_pawns());
         assert_eq!(3, test.white.count_isolated_pawns());
+    }
+
+    #[test]
+    fn count_pawns_protecting_king() {
+        assert_eq!(3, Board::initial_position().white.count_pawns_protecting_king());
+        let test = Board::from_fen("rnbqkbnr/ppp4p/8/4p1P1/3pP3/8/PPP3P1/RN1QKBNR b KQkq - 0 8");
+        assert_eq!(1, test.white.count_pawns_protecting_king());
+        assert_eq!(2, test.black.count_pawns_protecting_king());
     }
 
     #[test]
