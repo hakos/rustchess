@@ -1328,7 +1328,7 @@ impl Board {
             let estimated_next_iteration_time =
                 iteration_start.elapsed() * estimated_branching_factor;
 
-            if start.elapsed() + estimated_next_iteration_time > time_budget {
+            if start.elapsed() + estimated_next_iteration_time / 2 > time_budget {
                 println!(
                     "Searched depth {} in {} seconds (budget {} seconds)",
                     depth,
