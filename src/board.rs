@@ -635,12 +635,13 @@ impl Pieces {
         count
     }
 
-    fn count_pawns_protecting_king(&self) -> i32 {
-        assert_eq!(1, self.king.count());
-        let king_file = Point::from_index(self.king.first_bit()).x as usize;
-        let protecting_files = FILES[king_file] | NEIGHBOR_FILES[king_file];
-        let protecting_pawns = protecting_files & self.pawns;
-        protecting_pawns.count() as i32
+    fn square_scores(&self, color: Color, is_end_game: bool) -> i32 {
+        pieces_square_score(self.rooks, &ROOK_SQUARE_SCORES, color)
+        + pieces_square_score(self.bishops, &BISHOP_SQUARE_SCORES, color)
+        + pieces_square_score(self.knights, &KNIGHT_SQUARE_SCORES, color)
+        + pieces_square_score(self.knights, &KNIGHT_SQUARE_SCORES, color)
+        + pieces_square_score(self.pawns, &PAWN_SQUARE_SCORES, color)
+        + pieces_square_score(self.king, if is_end_game { &KING_END_GAME_SQUARE_SCORES } else { &KING_MIDDLE_GAME_SQUARE_SCORES }, color)
     }
 }
 
@@ -721,21 +722,86 @@ const BLACK_PAWN_CAPTURES: [Point; 2] = [point(-1, 1), point(1, 1)];
 const MATE_SCORE: i32 = 10000;
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
-const CENTER_SCORE: [i32; 64] = [
-     0,  6, 10, 12, 12, 10,  6,  0,
-     6, 12, 16, 18, 18, 16, 12,  6,
-    10, 16, 20, 22, 22, 20, 16, 10,
-    12, 18, 22, 24, 24, 22, 18, 12,
-    12, 18, 22, 24, 24, 22, 18, 12,
-    10, 16, 20, 22, 22, 20, 16, 10,
-     6, 12, 16, 18, 18, 16, 12,  6,
-     0,  6, 10, 12, 12, 10,  6,  0,
+const PAWN_SQUARE_SCORES: [i32; 64] = [
+     0,  0,  0,  0,  0,  0,  0,  0,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    10, 10, 20, 30, 30, 20, 10, 10,
+     5,  5, 10, 25, 25, 10,  5,  5,
+     0,  0,  0, 20, 20,  0,  0,  0,
+     5, -5,-10,  0,  0,-10, -5,  5,
+     5, 10, 10,-20,-20, 10, 10,  5,
+     0,  0,  0,  0,  0,  0,  0,  0,
 ];
 
-fn center_score(pieces: BitBoard) -> i32 {
+#[cfg_attr(rustfmt, rustfmt_skip)]
+const KNIGHT_SQUARE_SCORES: [i32; 64] = [
+    -50,-40,-30,-30,-30,-30,-40,-50,
+    -40,-20,  0,  0,  0,  0,-20,-40,
+    -30,  0, 10, 15, 15, 10,  0,-30,
+    -30,  5, 15, 20, 20, 15,  5,-30,
+    -30,  0, 15, 20, 20, 15,  0,-30,
+    -30,  5, 10, 15, 15, 10,  5,-30,
+    -40,-20,  0,  5,  5,  0,-20,-40,
+    -50,-40,-30,-30,-30,-30,-40,-50,
+];
+
+#[cfg_attr(rustfmt, rustfmt_skip)]
+const BISHOP_SQUARE_SCORES: [i32; 64] = [
+    -20,-10,-10,-10,-10,-10,-10,-20,
+    -10,  0,  0,  0,  0,  0,  0,-10,
+    -10,  0,  5, 10, 10,  5,  0,-10,
+    -10,  5,  5, 10, 10,  5,  5,-10,
+    -10,  0, 10, 10, 10, 10,  0,-10,
+    -10, 10, 10, 10, 10, 10, 10,-10,
+    -10,  5,  0,  0,  0,  0,  5,-10,
+    -20,-10,-10,-10,-10,-10,-10,-20,
+];
+
+#[cfg_attr(rustfmt, rustfmt_skip)]
+const ROOK_SQUARE_SCORES: [i32; 64] = [
+     0,  0,  0,  0,  0,  0,  0,  0,
+     5, 10, 10, 10, 10, 10, 10,  5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+     0,  0,  0,  5,  5,  0,  0,  0,
+];
+
+#[cfg_attr(rustfmt, rustfmt_skip)]
+const KING_MIDDLE_GAME_SQUARE_SCORES: [i32; 64] = [
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -20,-30,-30,-40,-40,-30,-30,-20,
+    -10,-20,-20,-20,-20,-20,-20,-10,
+     20, 20,  0,  0,  0,  0, 20, 20,
+     20, 30, 10,  0,  0, 10, 30, 20,
+];
+
+#[cfg_attr(rustfmt, rustfmt_skip)]
+const KING_END_GAME_SQUARE_SCORES: [i32; 64] = [
+    -50,-40,-30,-20,-20,-30,-40,-50,
+    -30,-20,-10,  0,  0,-10,-20,-30,
+    -30,-10, 20, 30, 30, 20,-10,-30,
+    -30,-10, 30, 40, 40, 30,-10,-30,
+    -30,-10, 30, 40, 40, 30,-10,-30,
+    -30,-10, 20, 30, 30, 20,-10,-30,
+    -30,-30,  0,  0,  0,  0,-30,-30,
+    -50,-30,-30,-30,-30,-30,-30,-50,
+];
+
+fn pieces_square_score(pieces: BitBoard, scores: &[i32; 64], color: Color) -> i32 {
     let mut score: i32 = 0;
-    pieces.for_each_bit(|index| {
-        score += CENTER_SCORE[index as usize];
+    pieces.for_each_bit(|square| {
+        let index = if color == Color::White {
+            square
+        } else {
+            63 - square
+        };
+        score += scores[index as usize];
     });
     score
 }
@@ -1224,19 +1290,26 @@ impl Board {
     fn evaluate(&self) -> i32 {
         let (myself, opponent) = self.myself_opponent();
 
-        900 * (myself.queens.count() as i32 - opponent.queens.count() as i32)
+        let material =
+            900 * (myself.queens.count() as i32 - opponent.queens.count() as i32)
             + 500 * (myself.rooks.count() as i32 - opponent.rooks.count() as i32)
-            + 300 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32)
-            + 300 * (myself.knights.count() as i32 - opponent.knights.count() as i32)
-            + 100 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32)
-            + 20 * (myself.count_pawns_protecting_king() as i32 - opponent.count_pawns_protecting_king() as i32)
-            + 1 * (center_score(myself.knights | myself.bishops | myself.pawns)
-                - center_score(opponent.knights | opponent.bishops | opponent.pawns))
+            + 330 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32)
+            + 320 * (myself.knights.count() as i32 - opponent.knights.count() as i32)
+            + 100 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32);
+
+        let is_end_game = (myself.queens | opponent.queens) == 0;
+
+        let position = myself.square_scores(self.turn, is_end_game)
+            - opponent.square_scores(self.turn.other(), is_end_game);
+
+        let pawn_structure =
             - 50 * (myself.count_doubled_pawns() as i32 - opponent.count_doubled_pawns())
-            - 50 * (myself.count_isolated_pawns() as i32 - opponent.count_isolated_pawns())
+            - 50 * (myself.count_isolated_pawns() as i32 - opponent.count_isolated_pawns());
+
+        material + position + pawn_structure
     }
 
-    pub fn negamax_impl(&self, depth: u32, max_depth: u32, mut alpha: i32, beta: i32) -> i32 {
+    pub fn negamax_impl(&self, depth: u32, max_depth: u32, mut alpha: i32, beta: i32, prev_move: Move) -> i32 {
         // Reference: https://www.chessprogramming.org/Alpha-Beta
 
         if depth == 0 {
@@ -1250,7 +1323,14 @@ impl Board {
             if !self_copy.is_checked() {
                 any_legal_moves = true;
                 self_copy.turn = self_copy.turn.other();
-                let score = -self_copy.negamax_impl(depth - 1, max_depth, -beta, -alpha);
+                let new_depth = if depth == 1 && (m.dst == prev_move.dst || self_copy.is_checked()) {
+                    // Position is not "quiet" at leaf node; extend depth to
+                    // resolve captures and checks with a "quiescence search"
+                    1
+                } else {
+                    depth - 1
+                };
+                let score = -self_copy.negamax_impl(new_depth, max_depth, -beta, -alpha, m);
                 if score >= beta {
                     return beta; // fail hard beta-cutoff
                 }
@@ -1298,7 +1378,7 @@ impl Board {
                 self_copy.make_move_unverified(m);
                 if !self_copy.is_checked() {
                     self_copy.turn = self_copy.turn.other();
-                    let score = -self_copy.negamax_impl(depth - 1, depth, -beta, -alpha);
+                    let score = -self_copy.negamax_impl(depth - 1, depth, -beta, -alpha, m);
                     if debug {
                         println!("{}: {}", m, score);
                     }
@@ -1469,14 +1549,6 @@ mod tests {
         let test = Board::from_fen("rnbqkbnr/ppp4p/8/4p1P1/3pP3/8/PPP3P1/RN1QKBNR b KQkq - 0 8");
         assert_eq!(1, test.black.count_isolated_pawns());
         assert_eq!(3, test.white.count_isolated_pawns());
-    }
-
-    #[test]
-    fn count_pawns_protecting_king() {
-        assert_eq!(3, Board::initial_position().white.count_pawns_protecting_king());
-        let test = Board::from_fen("rnbqkbnr/ppp4p/8/4p1P1/3pP3/8/PPP3P1/RN1QKBNR b KQkq - 0 8");
-        assert_eq!(1, test.white.count_pawns_protecting_king());
-        assert_eq!(2, test.black.count_pawns_protecting_king());
     }
 
     #[test]
