@@ -9,8 +9,8 @@ fn main() {
 
     for line in stdin.lock().lines() {
         let command = line.unwrap();
-        let mut parts = command.split_whitespace().into_iter();
-        match parts.next() {
+        let mut words = command.split_whitespace().into_iter();
+        match words.next() {
             Some("uci") => {
                 println!("id name RustChess");
                 println!("id author Håkon Sandsmark");
@@ -18,19 +18,19 @@ fn main() {
             },
             Some("isready") => println!("readyok"),
             Some("position") => {
-                if parts.next() == Some("startpos") && parts.next() == Some("moves") {
+                if words.next() == Some("startpos") && words.next() == Some("moves") {
                     board = board::Board::initial_position();
-                    for m in parts {
+                    for m in words {
                         assert!(board.make_move(m));
                     }
                 }
             },
             Some("go") => {
                 let mut time_left = std::time::Duration::from_secs(10);
-                while let Some(part) = parts.next() {
+                while let Some(part) = words.next() {
                     if (part == "wtime" && board.turn() == board::Color::White)
                     || (part == "btime" && board.turn() == board::Color::Black) {
-                        let millis = parts.next().expect("time").parse::<u64>().unwrap();
+                        let millis = words.next().expect("time").parse::<u64>().expect("millis");
                         time_left = std::time::Duration::from_millis(millis);
                     }
                 }
@@ -39,7 +39,7 @@ fn main() {
                 let computer_move = board.negamax_iterative_deepening(time_budget);
                 assert!(board.make_move(&format!("{}", computer_move.1)));
                 println!("info string moved {} with evaluation {}",
-                    computer_move.1, computer_move.0 as f32 / 10.0);
+                    computer_move.1, computer_move.0 as f32 / 100.0);
                 println!("bestmove {}", computer_move.1);
             }
             _ => (),
