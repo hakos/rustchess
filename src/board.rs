@@ -718,24 +718,24 @@ const KING_QUEEN_MOVES: [Point; 8] = [
 const WHITE_PAWN_CAPTURES: [Point; 2] = [point(-1, -1), point(1, -1)];
 const BLACK_PAWN_CAPTURES: [Point; 2] = [point(-1, 1), point(1, 1)];
 
-const MATE_SCORE: i32 = 1000;
+const MATE_SCORE: i32 = 10000;
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
-const CENTER_DISTANCE: [i32; 64] = [
-    3, 3, 3, 3, 3, 3, 3, 3,
-    3, 2, 2, 2, 2, 2, 2, 3,
-    3, 2, 1, 1, 1, 1, 2, 3,
-    3, 2, 1, 0, 0, 1, 2, 3,
-    3, 2, 1, 0, 0, 1, 2, 3,
-    3, 2, 1, 1, 1, 1, 2, 3,
-    3, 2, 2, 2, 2, 2, 2, 3,
-    3, 3, 3, 3, 3, 3, 3, 3
+const CENTER_SCORE: [i32; 64] = [
+     0,  6, 10, 12, 12, 10,  6,  0,
+     6, 12, 16, 18, 18, 16, 12,  6,
+    10, 16, 20, 22, 22, 20, 16, 10,
+    12, 18, 22, 24, 24, 22, 18, 12,
+    12, 18, 22, 24, 24, 22, 18, 12,
+    10, 16, 20, 22, 22, 20, 16, 10,
+     6, 12, 16, 18, 18, 16, 12,  6,
+     0,  6, 10, 12, 12, 10,  6,  0,
 ];
 
-fn center_score(pieces: &Pieces) -> i32 {
+fn center_score(pieces: BitBoard) -> i32 {
     let mut score: i32 = 0;
-    pieces.occupancy().for_each_bit(|index| {
-        score += 3 - CENTER_DISTANCE[index as usize];
+    pieces.for_each_bit(|index| {
+        score += CENTER_SCORE[index as usize];
     });
     score
 }
@@ -1224,15 +1224,16 @@ impl Board {
     fn evaluate(&self) -> i32 {
         let (myself, opponent) = self.myself_opponent();
 
-        90 * (myself.queens.count() as i32 - opponent.queens.count() as i32)
-            + 50 * (myself.rooks.count() as i32 - opponent.rooks.count() as i32)
-            + 30 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32)
-            + 30 * (myself.knights.count() as i32 - opponent.knights.count() as i32)
-            + 10 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32)
-            + 2 * (myself.count_pawns_protecting_king() as i32 - opponent.count_pawns_protecting_king() as i32)
-            + 1 * (center_score(myself) - center_score(opponent))
-            - 5 * (myself.count_doubled_pawns() as i32 - opponent.count_doubled_pawns())
-            - 5 * (myself.count_isolated_pawns() as i32 - opponent.count_isolated_pawns())
+        900 * (myself.queens.count() as i32 - opponent.queens.count() as i32)
+            + 500 * (myself.rooks.count() as i32 - opponent.rooks.count() as i32)
+            + 300 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32)
+            + 300 * (myself.knights.count() as i32 - opponent.knights.count() as i32)
+            + 100 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32)
+            + 20 * (myself.count_pawns_protecting_king() as i32 - opponent.count_pawns_protecting_king() as i32)
+            + 1 * (center_score(myself.knights | myself.bishops | myself.pawns)
+                - center_score(opponent.knights | opponent.bishops | opponent.pawns))
+            - 50 * (myself.count_doubled_pawns() as i32 - opponent.count_doubled_pawns())
+            - 50 * (myself.count_isolated_pawns() as i32 - opponent.count_isolated_pawns())
     }
 
     pub fn negamax_impl(&self, depth: u32, max_depth: u32, mut alpha: i32, beta: i32) -> i32 {
