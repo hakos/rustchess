@@ -1367,9 +1367,10 @@ impl Board {
         ply: u32,
         mut alpha: i32,
         beta: i32,
-        prev_move: Move,
+        prev_move: Option<Move>,
         is_checked: bool,
         pv: &mut PrincipalVariation,
+        first_move: Option<Move>,
     ) -> i32 {
         // Reference: https://www.chessprogramming.org/Alpha-Beta
 
@@ -1379,14 +1380,22 @@ impl Board {
 
         let mut children_pv = PrincipalVariation::cleared();
         let mut any_legal_moves = false;
-        for m in self.pseudo_legal_move_iter() {
+
+        let rest_moves = self
+            .pseudo_legal_move_iter()
+            .filter(|&m| Some(m) != first_move);
+
+        for m in first_move.into_iter().chain(rest_moves) {
             let mut self_copy = *self;
             self_copy.make_move_unverified(m);
             if !self_copy.is_checked() {
                 any_legal_moves = true;
                 self_copy.turn = self_copy.turn.other();
                 let is_opponent_checked = self_copy.is_checked();
-                let new_depth = if depth == 1 && (m.dst == prev_move.dst || is_opponent_checked) {
+                let new_depth = if depth == 1
+                    && (prev_move.is_some() && m.dst == prev_move.unwrap().dst
+                        || is_opponent_checked)
+                {
                     // Position is not "quiet" at leaf node; extend depth to
                     // resolve captures and checks with a "quiescence search"
                     1
@@ -1398,9 +1407,10 @@ impl Board {
                     ply + 1,
                     -beta,
                     -alpha,
-                    m,
+                    Some(m),
                     is_opponent_checked,
                     &mut children_pv,
+                    None,
                 );
                 if score >= beta {
                     return beta; // fail hard beta-cutoff
@@ -1440,43 +1450,22 @@ impl Board {
     ) -> (i32, PrincipalVariation) {
         assert!(depth > 0);
 
-        let mut alpha = -MATE_SCORE;
+        let alpha = -MATE_SCORE;
         let beta = MATE_SCORE;
         let mut pv = PrincipalVariation::cleared();
-        let mut children_pv = PrincipalVariation::cleared();
 
-        first_move
-            .into_iter()
-            .chain(
-                self.pseudo_legal_move_iter()
-                    .filter(|&m| Some(m) != first_move),
-            )
-            .for_each(|m| {
-                let mut self_copy = *self;
-                self_copy.make_move_unverified(m);
-                if !self_copy.is_checked() {
-                    self_copy.turn = self_copy.turn.other();
-                    let is_opponent_checked = self_copy.is_checked();
-                    let score = -self_copy.negamax_impl(
-                        depth - 1,
-                        1,
-                        -beta,
-                        -alpha,
-                        m,
-                        is_opponent_checked,
-                        &mut children_pv,
-                    );
-                    if debug {
-                        println!("{}: {}", m, score);
-                    }
-                    if score > alpha {
-                        alpha = score; // alpha acts like max in MiniMax
-                        pv.set_moves(m, &children_pv);
-                    }
-                }
-            });
+        let score = self.negamax_impl(
+            depth,
+            0,
+            alpha,
+            beta,
+            None,
+            self.is_checked(),
+            &mut pv,
+            first_move,
+        );
 
-        (alpha, pv)
+        (score, pv)
     }
 
     pub fn negamax_iterative_deepening(
