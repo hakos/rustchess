@@ -34,13 +34,10 @@ fn main() {
                         time_left = std::time::Duration::from_millis(millis);
                     }
                 }
-                let time_budget = time_left / 10;
-                println!("info string search budget {:?}", time_budget);
-                let computer_move = board.negamax_iterative_deepening(time_budget);
-                assert!(board.make_move(&format!("{}", computer_move.1)));
-                println!("info string moved {} with evaluation {}",
-                    computer_move.1, computer_move.0 as f32 / 100.0);
-                println!("bestmove {}", computer_move.1);
+                let time_budget = time_left / 15;
+                let (score, moves, depth) = board.negamax_iterative_deepening(time_budget);
+                assert!(board.make_move(&format!("{}", moves.at(0))));
+                println!("bestmove {}", moves.at(0));
             }
             _ => (),
         };

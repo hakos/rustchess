@@ -637,10 +637,18 @@ impl Pieces {
 
     fn square_scores(&self, color: Color, is_end_game: bool) -> i32 {
         pieces_square_score(self.rooks, &ROOK_SQUARE_SCORES, color)
-        + pieces_square_score(self.bishops, &BISHOP_SQUARE_SCORES, color)
-        + pieces_square_score(self.knights, &KNIGHT_SQUARE_SCORES, color)
-        + pieces_square_score(self.pawns, &PAWN_SQUARE_SCORES, color)
-        + pieces_square_score(self.king, if is_end_game { &KING_END_GAME_SQUARE_SCORES } else { &KING_MIDDLE_GAME_SQUARE_SCORES }, color)
+            + pieces_square_score(self.bishops, &BISHOP_SQUARE_SCORES, color)
+            + pieces_square_score(self.knights, &KNIGHT_SQUARE_SCORES, color)
+            + pieces_square_score(self.pawns, &PAWN_SQUARE_SCORES, color)
+            + pieces_square_score(
+                self.king,
+                if is_end_game {
+                    &KING_END_GAME_SQUARE_SCORES
+                } else {
+                    &KING_MIDDLE_GAME_SQUARE_SCORES
+                },
+                color,
+            )
     }
 }
 
@@ -869,6 +877,12 @@ impl fmt::Display for Move {
     }
 }
 
+impl fmt::Debug for Move {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 struct MoveIterator {
     moves: [BitBoard; 64],
     pawns: BitBoard,
@@ -930,6 +944,34 @@ impl Iterator for MoveIterator {
             dst: self.dst,
             promotion: None,
         })
+    }
+}
+
+const MAX_PV_DEPTH: usize = 64;
+
+pub struct PrincipalVariation {
+    moves: [Option<Move>; MAX_PV_DEPTH],
+    num_moves: usize,
+}
+
+impl PrincipalVariation {
+    pub fn cleared() -> PrincipalVariation {
+        PrincipalVariation {
+            moves: [None; MAX_PV_DEPTH],
+            num_moves: 0,
+        }
+    }
+
+    pub fn at(&self, index: usize) -> Move {
+        assert!(index < self.num_moves);
+        self.moves[index].unwrap()
+    }
+
+    pub fn set_moves(&mut self, first: Move, rest: &PrincipalVariation) {
+        assert!(rest.num_moves < MAX_PV_DEPTH);
+        self.moves[0] = Some(first);
+        self.moves[1..=rest.num_moves].copy_from_slice(&rest.moves[0..rest.num_moves]);
+        self.num_moves = rest.num_moves + 1;
     }
 }
 
@@ -1295,15 +1337,14 @@ impl Board {
         const KNIGHT_VALUE: i32 = 320;
         const PAWN_VALUE: i32 = 100;
 
-        let material =
-            QUEEN_VALUE * (myself.queens.count() as i32 - opponent.queens.count() as i32)
+        let material = QUEEN_VALUE
+            * (myself.queens.count() as i32 - opponent.queens.count() as i32)
             + ROOK_VALUE * (myself.rooks.count() as i32 - opponent.rooks.count() as i32)
             + BISHOP_VALUE * (myself.bishops.count() as i32 - opponent.bishops.count() as i32)
             + KNIGHT_VALUE * (myself.knights.count() as i32 - opponent.knights.count() as i32)
             + PAWN_VALUE * (myself.pawns.count() as i32 - opponent.pawns.count() as i32);
 
-        let total_material =
-            QUEEN_VALUE * (myself.queens | opponent.queens).count() as i32
+        let total_material = QUEEN_VALUE * (myself.queens | opponent.queens).count() as i32
             + ROOK_VALUE * (myself.rooks | opponent.rooks).count() as i32
             + BISHOP_VALUE * (myself.bishops | opponent.bishops).count() as i32
             + KNIGHT_VALUE * (myself.knights | opponent.knights).count() as i32;
@@ -1313,20 +1354,30 @@ impl Board {
         let position = myself.square_scores(self.turn, is_end_game)
             - opponent.square_scores(self.turn.other(), is_end_game);
 
-        let pawn_structure =
-            - 30 * (myself.count_doubled_pawns() as i32 - opponent.count_doubled_pawns())
+        let pawn_structure = -30
+            * (myself.count_doubled_pawns() as i32 - opponent.count_doubled_pawns())
             - 30 * (myself.count_isolated_pawns() as i32 - opponent.count_isolated_pawns());
 
         material + position + pawn_structure
     }
 
-    pub fn negamax_impl(&self, depth: u32, max_depth: u32, mut alpha: i32, beta: i32, prev_move: Move) -> i32 {
+    pub fn negamax_impl(
+        &self,
+        depth: u32,
+        ply: u32,
+        mut alpha: i32,
+        beta: i32,
+        prev_move: Move,
+        is_checked: bool,
+        pv: &mut PrincipalVariation,
+    ) -> i32 {
         // Reference: https://www.chessprogramming.org/Alpha-Beta
 
         if depth == 0 {
             return self.evaluate();
         }
 
+        let mut children_pv = PrincipalVariation::cleared();
         let mut any_legal_moves = false;
         for m in self.pseudo_legal_move_iter() {
             let mut self_copy = *self;
@@ -1334,28 +1385,37 @@ impl Board {
             if !self_copy.is_checked() {
                 any_legal_moves = true;
                 self_copy.turn = self_copy.turn.other();
-                let new_depth = if depth == 1 && (m.dst == prev_move.dst || self_copy.is_checked()) {
+                let is_opponent_checked = self_copy.is_checked();
+                let new_depth = if depth == 1 && (m.dst == prev_move.dst || is_opponent_checked) {
                     // Position is not "quiet" at leaf node; extend depth to
                     // resolve captures and checks with a "quiescence search"
                     1
                 } else {
                     depth - 1
                 };
-                let score = -self_copy.negamax_impl(new_depth, max_depth, -beta, -alpha, m);
+                let score = -self_copy.negamax_impl(
+                    new_depth,
+                    ply + 1,
+                    -beta,
+                    -alpha,
+                    m,
+                    is_opponent_checked,
+                    &mut children_pv,
+                );
                 if score >= beta {
                     return beta; // fail hard beta-cutoff
                 }
                 if score > alpha {
                     alpha = score; // alpha acts like max in MiniMax
+                    pv.set_moves(m, &children_pv)
                 }
             }
         }
 
         if !any_legal_moves {
-            let score = if self.is_checked() {
-                // Mate: add depth to prefer mate in fewer moves
-                let current_depth = (max_depth - depth) as i32;
-                -MATE_SCORE + current_depth
+            let score = if is_checked {
+                // Mate: add ply to prefer mate in fewer moves
+                -MATE_SCORE + ply as i32
             } else {
                 // Stale mate
                 0
@@ -1365,18 +1425,25 @@ impl Board {
             }
             if score > alpha {
                 alpha = score;
+                pv.num_moves = 0;
             }
         }
 
         alpha
     }
 
-    pub fn negamax(&self, depth: u32, debug: bool, first_move: Option<Move>) -> (i32, Move) {
+    pub fn negamax(
+        &self,
+        depth: u32,
+        debug: bool,
+        first_move: Option<Move>,
+    ) -> (i32, PrincipalVariation) {
         assert!(depth > 0);
 
         let mut alpha = -MATE_SCORE;
         let beta = MATE_SCORE;
-        let mut best_move: Option<Move> = None;
+        let mut pv = PrincipalVariation::cleared();
+        let mut children_pv = PrincipalVariation::cleared();
 
         first_move
             .into_iter()
@@ -1389,46 +1456,64 @@ impl Board {
                 self_copy.make_move_unverified(m);
                 if !self_copy.is_checked() {
                     self_copy.turn = self_copy.turn.other();
-                    let score = -self_copy.negamax_impl(depth - 1, depth, -beta, -alpha, m);
+                    let is_opponent_checked = self_copy.is_checked();
+                    let score = -self_copy.negamax_impl(
+                        depth - 1,
+                        1,
+                        -beta,
+                        -alpha,
+                        m,
+                        is_opponent_checked,
+                        &mut children_pv,
+                    );
                     if debug {
                         println!("{}: {}", m, score);
                     }
                     if score > alpha {
-                        best_move = Some(m);
                         alpha = score; // alpha acts like max in MiniMax
+                        pv.set_moves(m, &children_pv);
                     }
                 }
             });
 
-        (alpha, best_move.unwrap())
+        (alpha, pv)
     }
 
-    pub fn negamax_iterative_deepening(&self, time_budget: std::time::Duration) -> (i32, Move) {
+    pub fn negamax_iterative_deepening(
+        &self,
+        time_budget: std::time::Duration,
+    ) -> (i32, PrincipalVariation, u32) {
         let start = std::time::Instant::now();
-        let mut best_move: Option<Move> = None;
         let mut depth = 1;
+        let mut pv = PrincipalVariation::cleared();
 
         loop {
             let iteration_start = std::time::Instant::now();
 
-            let r = self.negamax(depth, false, best_move);
-            let best_score = r.0;
-            best_move = Some(r.1);
+            let (best_score, moves) = self.negamax(depth, false, pv.moves[0]);
+            pv = moves;
 
             let estimated_branching_factor =
                 (self.white.occupancy() | self.black.occupancy()).count();
             let estimated_next_iteration_time =
                 iteration_start.elapsed() * estimated_branching_factor;
 
-            if start.elapsed() + estimated_next_iteration_time / 2 > time_budget {
-                println!(
-                    "Searched depth {} in {} seconds (budget {} seconds)",
-                    depth,
-                    start.elapsed().as_secs(),
-                    time_budget.as_secs()
-                );
+            let time = iteration_start.elapsed();
+            println!(
+                "info depth {} score cp {} time {} pv {}",
+                depth,
+                best_score,
+                time.as_secs() * 1_000u64 + time.subsec_micros() as u64 / 1_000u64,
+                pv.moves
+                    .iter()
+                    .take(pv.num_moves)
+                    .map(|m| format!("{}", m.unwrap()))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            );
 
-                break (best_score, best_move.unwrap());
+            if start.elapsed() + estimated_next_iteration_time / 2 > time_budget {
+                break (best_score, pv, depth);
             }
 
             depth += 1;
@@ -2075,52 +2160,70 @@ mod tests {
     #[test]
     fn negamax_mate_in_one() {
         let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b1K3/2q4B/7R b kq - 7 4");
-        let winning_move = board.negamax(2, true, None);
-        assert_eq!(MATE_SCORE - 1, winning_move.0);
-        assert_eq!("c2d2", format!("{}", winning_move.1));
+        let (score, moves) = board.negamax(2, true, None);
+        assert_eq!(MATE_SCORE - 1, score);
+        assert_eq!("c2d2", format!("{}", moves.at(0)));
     }
 
     #[test]
-    fn negamax_check_mate_in_two() {
+    fn negamax_mate_in_two() {
         let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b5/2q1K2B/7R w kq - 6 4");
-        assert_eq!(-(MATE_SCORE - 2), board.negamax(3, true, None).0);
+        let (score, moves) = board.negamax(3, true, None);
+        assert_eq!(-(MATE_SCORE - 2), score);
+        assert_eq!("e2e3", format!("{}", moves.at(0)));
+        assert_eq!("c2d2", format!("{}", moves.at(1)));
     }
 
     #[test]
     fn negamax_mate_in_three() {
         let board = Board::from_fen("r3k2r/Rb5q/8/8/8/2b5/4K2B/7R b kq - 3 2");
-        let winning_move = board.negamax(4, true, None);
-        assert_eq!(MATE_SCORE - 3, winning_move.0);
-        assert_eq!("h7c2", format!("{}", winning_move.1));
+        let (score, moves) = board.negamax(4, true, None);
+        assert_eq!(MATE_SCORE - 3, score);
+        assert_eq!("h7c2", format!("{}", moves.at(0)));
+    }
+
+    #[test]
+    fn negamax_mate_in_five_with_check_extension() {
+        let board = Board::from_fen("5k2/6pp/1N6/4np2/2B1n2K/1P6/P4P1P/8 b - - 0 41");
+        let (score, moves) = board.negamax(5, true, None);
+        assert_eq!(MATE_SCORE - 5, score);
+        assert_eq!("e5g6", format!("{}", moves.at(0)));
+        assert_eq!(5, moves.num_moves);
+    }
+
+    #[test]
+    fn negamax_mate_in_five_with_depth_6() {
+        let board = Board::from_fen("5k2/6pp/1N6/4np2/2B1n2K/1P6/P4P1P/8 b - - 0 41");
+        let (score, moves) = board.negamax(6, true, None);
+        assert_eq!(MATE_SCORE - 5, score);
+        assert_eq!("e5g6", format!("{}", moves.at(0)));
+        assert_eq!(5, moves.num_moves);
     }
 
     #[test]
     fn negamax_mate_in_six() {
         let board = Board::from_fen("8/8/2k5/8/2K5/4q3/8/8 w - -");
-        let winning_move = board.negamax(7, true, None);
-        assert_eq!(-(MATE_SCORE - 6), winning_move.0);
-        assert_eq!("c4b4", format!("{}", winning_move.1));
+        let (score, moves) = board.negamax(7, true, None);
+        assert_eq!(-(MATE_SCORE - 6), score);
+        assert_eq!("c4b4", format!("{}", moves.at(0)));
     }
-
     #[test]
     fn find_shortest_path_to_mate() {
         let mut board = Board::from_fen("8/2k5/8/K7/8/4q3/8/8 b - -");
-
-        let m1 = board.negamax(6, true, None);
-        assert_eq!(MATE_SCORE - 3, m1.0);
-        assert_eq!("e3b3", format!("{}", m1.1));
+        let (score1, moves1) = board.negamax(6, true, None);
+        assert_eq!(MATE_SCORE - 3, score1);
+        assert_eq!("e3b3", format!("{}", moves1.at(0)));
         board.make_move("e3b3");
 
-        let m2 = board.negamax(6, true, None);
-        assert_eq!(-(MATE_SCORE - 2), m2.0);
-        assert_eq!("a5a6", format!("{}", m2.1));
+        let (score2, moves2) = board.negamax(6, true, None);
+        assert_eq!(-(MATE_SCORE - 2), score2);
+        assert_eq!("a5a6", format!("{}", moves2.at(0)));
         board.make_move("a5a6");
 
         // Two possible moves to mate, make sure we take one of them
-        let m3 = board.negamax(6, true, None);
-        assert_eq!(MATE_SCORE - 1, m3.0);
-        board.make_move(&format!("{}", m3.1));
-        assert!(board.is_check_mated());
+        let (score3, moves3) = board.negamax(6, true, None);
+        assert_eq!(MATE_SCORE - 1, score3);
+        board.make_move(&format!("{}", moves3.at(0)));
     }
 
     #[test]
@@ -2132,8 +2235,8 @@ mod tests {
     #[test]
     fn avoid_stale_mate_when_winning() {
         let mut board = Board::from_fen("4k3/4p3/4PP2/8/1BP4P/1P6/P2P4/RN1K1B2 w - -");
-        let m = board.negamax(2, true, None);
-        assert!(board.make_move(&format!("{}", m.1)));
+        let (_score, moves) = board.negamax(2, true, None);
+        assert!(board.make_move(&format!("{}", moves.at(0))));
         assert!(!board.is_stale_mate());
     }
 }
