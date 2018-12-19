@@ -639,7 +639,6 @@ impl Pieces {
         pieces_square_score(self.rooks, &ROOK_SQUARE_SCORES, color)
         + pieces_square_score(self.bishops, &BISHOP_SQUARE_SCORES, color)
         + pieces_square_score(self.knights, &KNIGHT_SQUARE_SCORES, color)
-        + pieces_square_score(self.knights, &KNIGHT_SQUARE_SCORES, color)
         + pieces_square_score(self.pawns, &PAWN_SQUARE_SCORES, color)
         + pieces_square_score(self.king, if is_end_game { &KING_END_GAME_SQUARE_SCORES } else { &KING_MIDDLE_GAME_SQUARE_SCORES }, color)
     }
@@ -778,7 +777,7 @@ const KING_MIDDLE_GAME_SQUARE_SCORES: [i32; 64] = [
     -20,-30,-30,-40,-40,-30,-30,-20,
     -10,-20,-20,-20,-20,-20,-20,-10,
      20, 20,  0,  0,  0,  0, 20, 20,
-     20, 30, 10,  0,  0, 10, 30, 20,
+     20, 50, 20,  0,  0, 20, 50, 20,
 ];
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
