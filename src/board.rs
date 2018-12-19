@@ -1289,21 +1289,33 @@ impl Board {
     fn evaluate(&self) -> i32 {
         let (myself, opponent) = self.myself_opponent();
 
-        let material =
-            900 * (myself.queens.count() as i32 - opponent.queens.count() as i32)
-            + 500 * (myself.rooks.count() as i32 - opponent.rooks.count() as i32)
-            + 330 * (myself.bishops.count() as i32 - opponent.bishops.count() as i32)
-            + 320 * (myself.knights.count() as i32 - opponent.knights.count() as i32)
-            + 100 * (myself.pawns.count() as i32 - opponent.pawns.count() as i32);
+        const QUEEN_VALUE: i32 = 900;
+        const ROOK_VALUE: i32 = 500;
+        const BISHOP_VALUE: i32 = 330;
+        const KNIGHT_VALUE: i32 = 320;
+        const PAWN_VALUE: i32 = 100;
 
-        let is_end_game = (myself.queens | opponent.queens) == 0;
+        let material =
+            QUEEN_VALUE * (myself.queens.count() as i32 - opponent.queens.count() as i32)
+            + ROOK_VALUE * (myself.rooks.count() as i32 - opponent.rooks.count() as i32)
+            + BISHOP_VALUE * (myself.bishops.count() as i32 - opponent.bishops.count() as i32)
+            + KNIGHT_VALUE * (myself.knights.count() as i32 - opponent.knights.count() as i32)
+            + PAWN_VALUE * (myself.pawns.count() as i32 - opponent.pawns.count() as i32);
+
+        let total_material =
+            QUEEN_VALUE * (myself.queens | opponent.queens).count() as i32
+            + ROOK_VALUE * (myself.rooks | opponent.rooks).count() as i32
+            + BISHOP_VALUE * (myself.bishops | opponent.bishops).count() as i32
+            + KNIGHT_VALUE * (myself.knights | opponent.knights).count() as i32;
+
+        let is_end_game = total_material < 3000;
 
         let position = myself.square_scores(self.turn, is_end_game)
             - opponent.square_scores(self.turn.other(), is_end_game);
 
         let pawn_structure =
-            - 50 * (myself.count_doubled_pawns() as i32 - opponent.count_doubled_pawns())
-            - 50 * (myself.count_isolated_pawns() as i32 - opponent.count_isolated_pawns());
+            - 30 * (myself.count_doubled_pawns() as i32 - opponent.count_doubled_pawns())
+            - 30 * (myself.count_isolated_pawns() as i32 - opponent.count_isolated_pawns());
 
         material + position + pawn_structure
     }
