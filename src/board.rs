@@ -1393,7 +1393,7 @@ impl Board {
                 self_copy.turn = self_copy.turn.other();
                 let is_opponent_checked = self_copy.is_checked();
                 let new_depth = if depth == 1
-                    && (prev_move.is_some() && m.dst == prev_move.unwrap().dst
+                    && ((prev_move.is_some() && m.dst == prev_move.unwrap().dst)
                         || is_opponent_checked)
                 {
                     // Position is not "quiet" at leaf node; extend depth to
