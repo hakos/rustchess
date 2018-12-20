@@ -32,7 +32,7 @@ impl PrincipalVariation {
     }
 }
 
-fn perft(board: &board::Board, depth: u32, debug: bool) -> u64 {
+pub fn perft(board: &board::Board, depth: u32, debug: bool) -> u64 {
     let mut num_nodes = 0;
 
     if depth == 0 {

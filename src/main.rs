@@ -40,6 +40,14 @@ fn main() {
                 assert!(board.make_move(&format!("{}", moves.at(0))));
                 println!("bestmove {}", moves.at(0));
             }
+            Some("perft") => {
+                let depth = words.next().unwrap_or("6").parse::<u32>().expect("depth");
+                let start = std::time::Instant::now();
+                let perft = search::perft(&board, depth, false);
+                let time = start.elapsed();
+                println!("perft({}) = {} took {:?} ({} kHz)",
+                    depth, perft, time, (perft / 1_000) / time.as_secs());
+            }
             _ => (),
         };
     }
