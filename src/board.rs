@@ -726,8 +726,6 @@ const KING_QUEEN_MOVES: [Point; 8] = [
 const WHITE_PAWN_CAPTURES: [Point; 2] = [point(-1, -1), point(1, -1)];
 const BLACK_PAWN_CAPTURES: [Point; 2] = [point(-1, 1), point(1, 1)];
 
-const MATE_SCORE: i32 = 10000;
-
 #[cfg_attr(rustfmt, rustfmt_skip)]
 const PAWN_SQUARE_SCORES: [i32; 64] = [
      0,  0,  0,  0,  0,  0,  0,  0,
@@ -852,8 +850,8 @@ fn apply_move(pieces: &mut BitBoard, src: u8, dst: u8, enemies: &mut Pieces) {
 
 #[derive(PartialEq, Copy, Clone)]
 pub struct Move {
-    src: u8,
-    dst: u8,
+    pub src: u8,
+    pub dst: u8,
     promotion: Option<Promotion>,
 }
 
@@ -883,7 +881,7 @@ impl fmt::Debug for Move {
     }
 }
 
-struct MoveIterator {
+pub struct MoveIterator {
     moves: [BitBoard; 64],
     pawns: BitBoard,
     src: u8,
@@ -947,37 +945,6 @@ impl Iterator for MoveIterator {
     }
 }
 
-const MAX_PV_DEPTH: usize = 64;
-
-pub struct PrincipalVariation {
-    moves: [Option<Move>; MAX_PV_DEPTH],
-    num_moves: usize,
-}
-
-impl PrincipalVariation {
-    pub fn cleared() -> PrincipalVariation {
-        PrincipalVariation {
-            moves: [None; MAX_PV_DEPTH],
-            num_moves: 0,
-        }
-    }
-
-    pub fn at(&self, index: usize) -> Move {
-        assert!(index < self.num_moves);
-        self.moves[index].unwrap()
-    }
-
-    pub fn set_moves(&mut self, first: Move, rest: &PrincipalVariation) {
-        assert!(rest.num_moves < MAX_PV_DEPTH);
-        self.moves[0] = Some(first);
-        self.moves[1..=rest.num_moves].copy_from_slice(&rest.moves[0..rest.num_moves]);
-        self.num_moves = rest.num_moves + 1;
-        for i in self.num_moves..MAX_PV_DEPTH {
-            self.moves[i] = None
-        }
-    }
-}
-
 impl Board {
     pub fn initial_position() -> Board {
         #[cfg_attr(feature = "cargo-clippy", allow(clippy::large_digit_groups))]
@@ -1017,6 +984,11 @@ impl Board {
             en_passant_square: None,
         }
     }
+
+    pub fn count_pieces(&self) -> u32 {
+        (self.white.occupancy() | self.black.occupancy()).count()
+    }
+
 
     pub fn from_fen(fen: &str) -> Board {
         let mut board = Board::cleared();
@@ -1211,12 +1183,16 @@ impl Board {
             return false;
         }
 
-        self.turn = self.turn.other();
+        self.change_turn();
 
         true
     }
 
-    fn make_move_unverified(&mut self, m: Move) {
+    pub fn change_turn(&mut self) {
+        self.turn = self.turn.other();
+    }
+
+    pub fn make_move_unverified(&mut self, m: Move) {
         if self.turn == Color::White {
             assert!(self.white.apply_move_impl(
                 &mut self.black,
@@ -1259,7 +1235,7 @@ impl Board {
         }
     }
 
-    fn count_moves(&self) -> u32 {
+    pub fn count_moves(&self) -> u32 {
         if self.turn == Color::White {
             self.white.count_moves(&self.get_moves(), self.turn)
         } else {
@@ -1287,7 +1263,7 @@ impl Board {
         self.turn
     }
 
-    fn pseudo_legal_move_iter(&self) -> MoveIterator {
+    pub fn pseudo_legal_move_iter(&self) -> MoveIterator {
         let (myself, opponent) = self.myself_opponent();
         MoveIterator {
             moves: myself.get_pseudo_legal_moves(opponent, self.en_passant_square, self.turn),
@@ -1299,30 +1275,6 @@ impl Board {
         }
     }
 
-    fn perft(&self, depth: u32, debug: bool) -> u64 {
-        let mut num_nodes = 0;
-
-        if depth == 0 {
-            return 1;
-        }
-
-        // Pseudo legal moves may leave us checked
-        for m in self.pseudo_legal_move_iter() {
-            let mut self_copy = *self;
-            self_copy.make_move_unverified(m);
-            if !self_copy.is_checked() {
-                self_copy.turn = self_copy.turn.other();
-                let num = self_copy.perft(depth - 1, false);
-                if debug {
-                    println!("{}: {}", m, num);
-                }
-                num_nodes += num;
-            }
-        }
-
-        num_nodes
-    }
-
     fn myself_opponent(&self) -> (&Pieces, &Pieces) {
         if self.turn == Color::White {
             (&self.white, &self.black)
@@ -1331,7 +1283,7 @@ impl Board {
         }
     }
 
-    fn evaluate(&self) -> i32 {
+    pub fn evaluate(&self) -> i32 {
         let (myself, opponent) = self.myself_opponent();
 
         const QUEEN_VALUE: i32 = 900;
@@ -1362,155 +1314,6 @@ impl Board {
             - 30 * (myself.count_isolated_pawns() as i32 - opponent.count_isolated_pawns());
 
         material + position + pawn_structure
-    }
-
-    pub fn negamax_impl(
-        &self,
-        depth: u32,
-        ply: u32,
-        mut alpha: i32,
-        beta: i32,
-        prev_move: Option<Move>,
-        is_checked: bool,
-        pv: &mut PrincipalVariation,
-        first_moves: &[Option<Move>],
-    ) -> i32 {
-        // Reference: https://www.chessprogramming.org/Alpha-Beta
-
-        if depth == 0 {
-            pv.num_moves = 0;
-            return self.evaluate();
-        }
-
-        let mut children_pv = PrincipalVariation::cleared();
-        let mut any_legal_moves = false;
-
-        let rest_moves = self
-            .pseudo_legal_move_iter()
-            .filter(|&m| Some(m) != first_moves[0]);
-
-        for m in first_moves[0].into_iter().chain(rest_moves) {
-            let mut self_copy = *self;
-            self_copy.make_move_unverified(m);
-            if !self_copy.is_checked() {
-                any_legal_moves = true;
-                self_copy.turn = self_copy.turn.other();
-                let is_opponent_checked = self_copy.is_checked();
-                let new_depth = if depth == 1
-                    && ((prev_move.is_some() && m.dst == prev_move.unwrap().dst)
-                        || is_opponent_checked)
-                {
-                    // Position is not "quiet" at leaf node; extend depth to
-                    // resolve captures and checks with a "quiescence search"
-                    1
-                } else {
-                    depth - 1
-                };
-                let score = -self_copy.negamax_impl(
-                    new_depth,
-                    ply + 1,
-                    -beta,
-                    -alpha,
-                    Some(m),
-                    is_opponent_checked,
-                    &mut children_pv,
-                    if Some(m) == first_moves[0] { &first_moves[1..] } else { &[None] },
-                );
-                if score >= beta {
-                    return beta; // fail hard beta-cutoff
-                }
-                if score > alpha {
-                    alpha = score; // alpha acts like max in MiniMax
-                    pv.set_moves(m, &children_pv)
-                }
-            }
-        }
-
-        if !any_legal_moves {
-            let score = if is_checked {
-                // Mate: add ply to prefer mate in fewer moves
-                -MATE_SCORE + ply as i32
-            } else {
-                // Stale mate
-                0
-            };
-            if score >= beta {
-                return beta;
-            }
-            if score > alpha {
-                alpha = score;
-                pv.num_moves = 0;
-            }
-        }
-
-        alpha
-    }
-
-    pub fn negamax(
-        &self,
-        depth: u32,
-        debug: bool,
-        first_moves: &[Option<Move>],
-    ) -> (i32, PrincipalVariation) {
-        assert!(depth > 0);
-
-        let alpha = -MATE_SCORE;
-        let beta = MATE_SCORE;
-        let mut pv = PrincipalVariation::cleared();
-
-        let score = self.negamax_impl(
-            depth,
-            0,
-            alpha,
-            beta,
-            None,
-            self.is_checked(),
-            &mut pv,
-            first_moves,
-        );
-
-        (score, pv)
-    }
-
-    pub fn negamax_iterative_deepening(
-        &self,
-        time_budget: std::time::Duration,
-    ) -> (i32, PrincipalVariation, u32) {
-        let start = std::time::Instant::now();
-        let mut depth = 1;
-        let mut pv = PrincipalVariation::cleared();
-
-        loop {
-            let iteration_start = std::time::Instant::now();
-
-            let (best_score, moves) = self.negamax(depth, false, &pv.moves);
-            pv = moves;
-
-            let estimated_branching_factor =
-                (self.white.occupancy() | self.black.occupancy()).count();
-            let estimated_next_iteration_time =
-                iteration_start.elapsed() * estimated_branching_factor;
-
-            let time = iteration_start.elapsed();
-            println!(
-                "info depth {} score cp {} time {} pv {}",
-                depth,
-                best_score,
-                time.as_secs() * 1_000u64 + time.subsec_micros() as u64 / 1_000u64,
-                pv.moves
-                    .iter()
-                    .take(pv.num_moves)
-                    .map(|m| format!("{}", m.unwrap()))
-                    .collect::<Vec<String>>()
-                    .join(" "),
-            );
-
-            if start.elapsed() + estimated_next_iteration_time / 2 > time_budget {
-                break (best_score, pv, depth);
-            }
-
-            depth += 1;
-        }
     }
 }
 
@@ -1925,98 +1728,6 @@ mod tests {
         assert_eq!("K7/7P/8/8/8/8/8/k7 w - -", board.as_fen());
     }
 
-    // https://gist.github.com/peterellisjones/8c46c28141c162d1d8a0f0badbc9cff9
-
-    #[test]
-    fn perft_test_position_1() {
-        let board = Board::from_fen("r6r/1b2k1bq/8/8/7B/8/8/R3K2R b QK");
-        assert_eq!(8, board.count_moves());
-        assert_eq!(8, board.perft(1, false));
-    }
-
-    #[test]
-    fn perft_test_position_2() {
-        let board = Board::from_fen("8/8/8/2k5/2pP4/8/B7/4K3 b - d3");
-        assert_eq!(8, board.count_moves());
-        assert_eq!(8, board.perft(1, false));
-    }
-
-    #[test]
-    fn perft_test_position_3() {
-        let board = Board::from_fen("r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR w QqKk");
-        assert_eq!(19, board.count_moves());
-        assert_eq!(19, board.perft(1, false));
-    }
-
-    #[test]
-    fn peft_test_position_4() {
-        let board = Board::from_fen("r3k2r/p1pp1pb1/bn2Qnp1/2qPN3/1p2P3/2N5/PPPBBPPP/R3K2R b QqKk");
-        assert_eq!(5, board.count_moves());
-        assert_eq!(5, board.perft(1, false));
-    }
-
-    #[test]
-    fn peft_test_position_5() {
-        let board = Board::from_fen("2kr3r/p1ppqpb1/bn2Qnp1/3PN3/1p2P3/2N5/PPPBBPPP/R3K2R b QK");
-        assert_eq!(44, board.count_moves());
-        assert_eq!(44, board.perft(1, false));
-    }
-
-    #[test]
-    fn peft_test_position_6() {
-        let board = Board::from_fen("rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R w QK");
-        assert_eq!(39, board.count_moves());
-        assert_eq!(39, board.perft(1, false));
-    }
-
-    #[test]
-    fn peft_test_position_7() {
-        let board = Board::from_fen("2r5/3pk3/8/2P5/8/2K5/8/8 w -");
-        assert_eq!(9, board.count_moves());
-        assert_eq!(9, board.perft(1, false));
-    }
-
-    #[test]
-    fn perft_test_position_8() {
-        let board = Board::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ -");
-        assert_eq!(62379, board.perft(3, true));
-    }
-
-    #[test]
-    fn perft_test_position_9() {
-        let board = Board::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ -");
-        assert_eq!(62379, board.perft(3, true));
-    }
-
-    #[test]
-    fn perft_test_position_10() {
-        let board =
-            Board::from_fen("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - -");
-        assert_eq!(89890, board.perft(3, true));
-    }
-
-    #[test]
-    fn perft_test_position_11() {
-        let board = Board::from_fen("K1k5/8/P7/8/8/8/8/8 w - -");
-        assert_eq!(2217, board.perft(6, true));
-    }
-
-    #[test]
-    fn perft_test_position_12() {
-        let board = Board::from_fen("8/8/2k5/5q2/5n2/8/5K2/8 b - -");
-        assert_eq!(23527, board.perft(4, true));
-    }
-
-    #[test]
-    fn perft_initial_position() {
-        let board = Board::initial_position();
-        assert_eq!(1, board.perft(0, false));
-        assert_eq!(20, board.perft(1, false));
-        assert_eq!(400, board.perft(2, false));
-        assert_eq!(8902, board.perft(3, false));
-        assert_eq!(197281, board.perft(4, false));
-    }
-
     #[test]
     fn capture_rook_loses_castling_rights() {
         let mut board = Board::from_fen("r3k2r/Rb4bq/8/8/8/8/7B/4K2R b Kkq - 1 1");
@@ -2151,93 +1862,8 @@ mod tests {
     }
 
     #[test]
-    fn negamax_mate_in_one() {
-        let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b1K3/2q4B/7R b kq - 7 4");
-        let (score, moves) = board.negamax(2, true, &[None]);
-        assert_eq!(MATE_SCORE - 1, score);
-        assert_eq!("c2d2", format!("{}", moves.at(0)));
-    }
-
-    #[test]
-    fn negamax_mate_in_two() {
-        let board = Board::from_fen("r3k2r/Rb6/8/8/8/2b5/2q1K2B/7R w kq - 6 4");
-        let (score, moves) = board.negamax(3, true, &[None]);
-        assert_eq!(-(MATE_SCORE - 2), score);
-        assert_eq!("e2e3", format!("{}", moves.at(0)));
-        assert_eq!("c2d2", format!("{}", moves.at(1)));
-    }
-
-    #[test]
-    fn negamax_mate_in_three() {
-        let board = Board::from_fen("r3k2r/Rb5q/8/8/8/2b5/4K2B/7R b kq - 3 2");
-        let (score, moves) = board.negamax(4, true, &[None]);
-        assert_eq!(MATE_SCORE - 3, score);
-        assert_eq!("h7c2", format!("{}", moves.at(0)));
-    }
-
-    #[test]
-    fn negamax_mate_in_five_with_check_extension() {
-        let board = Board::from_fen("5k2/6pp/1N6/4np2/2B1n2K/1P6/P4P1P/8 b - - 0 41");
-        let (score, moves) = board.negamax(5, true, &[None]);
-        assert_eq!(MATE_SCORE - 5, score);
-        assert_eq!("e5g6", format!("{}", moves.at(0)));
-        assert_eq!(5, moves.num_moves);
-    }
-
-    #[test]
-    fn negamax_should_not_extend_search() {
-        let board = Board::from_fen("r2qkb1r/pppbpppp/3p1n2/1B6/1n6/2N1PQ2/PPPPNPPP/R1B1K2R w KQkq -");
-        let (score, moves) = board.negamax(1, true, &[None]);
-        assert_eq!(1, moves.num_moves);
-        assert!(moves.moves[1].is_none());
-    }
-
-    #[test]
-    fn negamax_mate_in_five_with_depth_6() {
-        let board = Board::from_fen("5k2/6pp/1N6/4np2/2B1n2K/1P6/P4P1P/8 b - - 0 41");
-        let (score, moves) = board.negamax(6, true, &[None]);
-        assert_eq!(MATE_SCORE - 5, score);
-        assert_eq!("e5g6", format!("{}", moves.at(0)));
-        assert_eq!(5, moves.num_moves);
-    }
-
-    #[test]
-    fn negamax_mate_in_six() {
-        let board = Board::from_fen("8/8/2k5/8/2K5/4q3/8/8 w - -");
-        let (score, moves) = board.negamax(7, true, &[None]);
-        assert_eq!(-(MATE_SCORE - 6), score);
-        assert_eq!("c4b4", format!("{}", moves.at(0)));
-    }
-    #[test]
-    fn find_shortest_path_to_mate() {
-        let mut board = Board::from_fen("8/2k5/8/K7/8/4q3/8/8 b - -");
-        let (score1, moves1) = board.negamax(6, true, &[None]);
-        assert_eq!(MATE_SCORE - 3, score1);
-        assert_eq!("e3b3", format!("{}", moves1.at(0)));
-        board.make_move("e3b3");
-
-        let (score2, moves2) = board.negamax(6, true, &[None]);
-        assert_eq!(-(MATE_SCORE - 2), score2);
-        assert_eq!("a5a6", format!("{}", moves2.at(0)));
-        board.make_move("a5a6");
-
-        // Two possible moves to mate, make sure we take one of them
-        let (score3, moves3) = board.negamax(6, true, &[None]);
-        assert_eq!(MATE_SCORE - 1, score3);
-        board.make_move(&format!("{}", moves3.at(0)));
-    }
-
-    #[test]
     fn stale_mate() {
         let board = Board::from_fen("5bnr/4p1pq/4Qpkr/7p/2P4P/8/PP1PPPP1/RNB1KBNR b KQ - 0 10");
         assert!(board.is_stale_mate());
-    }
-
-    #[test]
-    fn avoid_stale_mate_when_winning() {
-        let mut board = Board::from_fen("4k3/4p3/4PP2/8/1BP4P/1P6/P2P4/RN1K1B2 w - -");
-        let (_score, moves) = board.negamax(2, true, &[None]);
-        assert!(board.make_move(&format!("{}", moves.at(0))));
-        assert!(!board.is_stale_mate());
     }
 }

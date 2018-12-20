@@ -1,4 +1,5 @@
 mod board;
+mod search;
 
 fn main() {
     use std::io;
@@ -35,7 +36,7 @@ fn main() {
                     }
                 }
                 let time_budget = time_left / 15;
-                let (score, moves, depth) = board.negamax_iterative_deepening(time_budget);
+                let (score, moves, depth) = search::negamax_iterative_deepening(&board, time_budget);
                 assert!(board.make_move(&format!("{}", moves.at(0))));
                 println!("bestmove {}", moves.at(0));
             }
