@@ -1,17 +1,18 @@
 use super::board;
 
-const MAX_PV_DEPTH: usize = 64;
+const MAX_PLY: usize = 64;
 const MATE_SCORE: i32 = 10000;
+const MATE_IN_MAX_PLY: i32 = MATE_SCORE - MAX_PLY as i32;
 
 pub struct PrincipalVariation {
-    moves: [Option<board::Move>; MAX_PV_DEPTH],
+    moves: [Option<board::Move>; MAX_PLY],
     num_moves: usize,
 }
 
 impl PrincipalVariation {
     pub fn cleared() -> PrincipalVariation {
         PrincipalVariation {
-            moves: [None; MAX_PV_DEPTH],
+            moves: [None; MAX_PLY],
             num_moves: 0,
         }
     }
@@ -22,11 +23,11 @@ impl PrincipalVariation {
     }
 
     pub fn set_moves(&mut self, first: board::Move, rest: &PrincipalVariation) {
-        assert!(rest.num_moves < MAX_PV_DEPTH);
+        assert!(rest.num_moves < MAX_PLY);
         self.moves[0] = Some(first);
         self.moves[1..=rest.num_moves].copy_from_slice(&rest.moves[0..rest.num_moves]);
         self.num_moves = rest.num_moves + 1;
-        for i in self.num_moves..MAX_PV_DEPTH {
+        for i in self.num_moves..MAX_PLY {
             self.moves[i] = None
         }
     }
@@ -109,34 +110,38 @@ pub fn negamax_impl(
                 &mut children_pv,
                 if Some(m) == first_moves[0] { &first_moves[1..] } else { &[None] },
             );
-            if score >= beta {
-                return beta; // fail hard beta-cutoff
-            }
             if score > alpha {
                 alpha = score; // alpha acts like max in MiniMax
                 pv.set_moves(m, &children_pv)
+            }
+            if alpha >= beta {
+                break
             }
         }
     }
 
     if !any_legal_moves {
-        let score = if is_checked {
+        pv.num_moves = 0;
+        return if is_checked {
             // Mate: add ply to prefer mate in fewer moves
             -MATE_SCORE + ply as i32
         } else {
             // Stale mate
             0
         };
-        if score >= beta {
-            return beta;
-        }
-        if score > alpha {
-            alpha = score;
-            pv.num_moves = 0;
-        }
     }
 
     alpha
+}
+
+fn mate_in_ply(score: i32) -> Option<i32> {
+    if score >= MATE_IN_MAX_PLY {
+        Some(MATE_SCORE - score)
+    } else if score <= -MATE_IN_MAX_PLY {
+        Some(-MATE_SCORE - score)
+    } else {
+        None
+    }
 }
 
 pub fn negamax(
@@ -185,10 +190,15 @@ pub fn negamax_iterative_deepening(
             iteration_start.elapsed() * estimated_branching_factor;
 
         let time = iteration_start.elapsed();
+
         println!(
-            "info depth {} score cp {} time {} pv {}",
+            "info depth {} score {} time {} pv {}",
             depth,
-            best_score,
+            if let Some(mate) = mate_in_ply(best_score) {
+                format!("mate {}", mate / 2)
+            } else {
+                format!("cp {}", best_score)
+            },
             time.as_secs() * 1_000u64 + time.subsec_micros() as u64 / 1_000u64,
             pv.moves
                 .iter()
@@ -386,5 +396,13 @@ mod tests {
         let (_score, moves) = negamax(&board, 2, true, &[None]);
         assert!(board.make_move(&format!("{}", moves.at(0))));
         assert!(!board.is_stale_mate());
+    }
+
+    #[test]
+    fn mate_in_ply_test() {
+        assert_eq!(Some(0), mate_in_ply(MATE_SCORE));
+        assert_eq!(None, mate_in_ply(0));
+        assert_eq!(Some(1), mate_in_ply(MATE_SCORE - 1));
+        assert_eq!(Some(-1), mate_in_ply(-(MATE_SCORE - 1)));
     }
 }
