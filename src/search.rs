@@ -194,8 +194,8 @@ pub fn negamax_iterative_deepening(
         println!(
             "info depth {} score {} time {} pv {}",
             depth,
-            if let Some(mate) = mate_in_ply(best_score) {
-                format!("mate {}", mate / 2)
+            if let Some(ply) = mate_in_ply(best_score) {
+                format!("mate {}", (ply + 1) / 2)
             } else {
                 format!("cp {}", best_score)
             },
